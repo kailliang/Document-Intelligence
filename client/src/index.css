@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  font-family: "Inter", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  --text-color: #213547;
+  --background-color: #f7f7f7;
+  --button-bg-color: #646cff;
+  --button-text-color: #ffffff;
+  --hover-button-bg-color: #535bf2;
+}
+
+html,
+body,
+div#root {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+h1 {
+  margin: 0 0 20px 0;
+  color: var(--text-color);
+}
+
+button {
+  margin: 10px;
+  padding: 10px 20px;
+  min-width: 100px;
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: var(--hover-button-bg-color);
+}
+
+/* Additional media query for light mode if needed */
+@media (prefers-color-scheme: light) {
+  :root {
+    --text-color: #213547;
+    --background-color: #ffffff;
+    --button-bg-color: #747bff;
+    --hover-button-bg-color: #646cff;
+  }
+}
