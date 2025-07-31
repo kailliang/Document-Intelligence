@@ -29,6 +29,7 @@ export interface DocumentProps {
   content: string;
   onAISuggestions?: (suggestions: AISuggestion[]) => void;  // 新增：AI建议回调
   onProcessingStatus?: (isProcessing: boolean, message?: string) => void;  // 新增：处理状态回调
+  isAIEnabled: boolean;  // 新增：AI开关状态
 }
 
 const SOCKET_URL = "ws://localhost:8000/ws";
@@ -37,7 +38,8 @@ export default function Document({
   onContentChange, 
   content, 
   onAISuggestions,
-  onProcessingStatus 
+  onProcessingStatus,
+  isAIEnabled
 }: DocumentProps) {
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");
@@ -129,12 +131,14 @@ export default function Document({
   // Debounce editor content changes
   const sendEditorContent = useCallback(
     debounce((content: string) => {
-      // 只有在WebSocket连接且不在处理中时才发送
+      // 只有在AI开启、WebSocket连接且不在处理中时才发送
       // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-      if (readyState === 1 && !isAIProcessing && content.trim() && content !== lastAnalyzedContent) {
+      if (isAIEnabled && readyState === 1 && !isAIProcessing && content.trim() && content !== lastAnalyzedContent) {
         console.log("📤 发送内容给AI分析，长度:", content.length);
         setLastAnalyzedContent(content); // 记录已分析的内容
         sendMessage(content);
+      } else if (!isAIEnabled) {
+        console.log("🔒 AI功能已关闭，跳过分析");
       } else if (content === lastAnalyzedContent) {
         console.log("🔄 内容未改变，跳过AI分析");
       } else if (readyState !== 1) {
@@ -143,8 +147,8 @@ export default function Document({
       } else if (isAIProcessing) {
         console.log("⏳ AI正在处理中，跳过新请求");
       }
-    }, 1000), // 增加防抖时间到1秒，避免频繁AI调用
-    [sendMessage, readyState, isAIProcessing, onProcessingStatus, lastAnalyzedContent]
+    }, 3000), // 防抖时间改为3秒
+    [sendMessage, readyState, isAIProcessing, onProcessingStatus, lastAnalyzedContent, isAIEnabled]
   );
 
   const handleEditorChange = (content: string) => {
@@ -152,20 +156,22 @@ export default function Document({
     sendEditorContent(content);
   };
 
-  // 当文档内容初始加载或切换文档时，也发送给AI分析
+  // 当AI开启且文档内容加载时，发送给AI分析
   useEffect(() => {
     console.log("📊 文档状态:", { 
       hasContent: !!content, 
       contentLength: content?.length,
       readyState, 
-      isAIProcessing 
+      isAIProcessing,
+      isAIEnabled
     });
     
-    if (content && readyState === 1 && !isAIProcessing && content !== lastAnalyzedContent) {
-      console.log("📄 文档已加载/切换，发送给AI分析");
+    // 只有在AI开启时才自动分析
+    if (isAIEnabled && content && readyState === 1 && !isAIProcessing && content !== lastAnalyzedContent) {
+      console.log("📄 AI开启，立即分析文档内容");
       sendEditorContent(content);
     }
-  }, [content, readyState, isAIProcessing, sendEditorContent, lastAnalyzedContent]);
+  }, [content, readyState, isAIProcessing, sendEditorContent, lastAnalyzedContent, isAIEnabled]);
 
   return (
     <div className="w-full h-full flex flex-col">

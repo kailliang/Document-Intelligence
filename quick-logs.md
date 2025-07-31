@@ -1,5 +1,135 @@
 # Quick Logs
 
+## 2025-07-31 - 功能修改：新版本创建空文档
+
+### 🎯 **用户需求**
+用户希望创建新版本时从空白文档开始，而不是复制当前文档内容。
+
+### 🔧 **修改的文件和代码**
+
+**文件1：server/app/__main__.py (第312行)**
+```python
+# 修改前 - 使用请求中的内容
+content=request.content,
+
+# 修改后 - 固定为空字符串
+content="",  # 新版本从空文档开始
+```
+**学习要点：**
+- 在API端点中，我们可以忽略客户端发送的数据
+- 硬编码空字符串确保新版本总是空白的
+- 注释说明了代码的意图，提高可读性
+
+**文件2：server/app/schemas.py (第92行)**
+```python
+# 修改前 - content是必需字段
+class CreateVersionRequest(BaseModel):
+    content: str
+
+# 修改后 - content变为可选，默认空字符串
+class CreateVersionRequest(BaseModel):
+    """创建新版本的请求模式 - content现在是可选的，新版本默认为空"""
+    content: Optional[str] = ""
+```
+**学习要点：**
+- `Optional[str]` 表示字段可以是字符串或None
+- `= ""` 设置默认值，如果客户端不传这个字段
+- Pydantic会自动处理可选字段的验证
+- 文档字符串更新解释了新的行为
+
+**文件3：client/src/App.tsx (第193行)**
+```typescript
+// 修改前 - 发送当前文档内容
+await axios.post(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions`, {
+  content: currentDocumentContent,
+});
+
+// 修改后 - 发送空对象
+await axios.post(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions`, {});
+```
+**学习要点：**
+- 简化了API调用，不再需要传递content字段
+- 空对象`{}`作为请求体仍然是有效的JSON
+- TypeScript的axios调用保持类型安全
+- 注释说明这会创建空文档
+
+### 📚 **技术学习要点**
+
+**1. API设计原则：**
+```python
+# ❌ 不好的设计 - 总是相信客户端数据
+content = request.content
+
+# ✅ 好的设计 - 服务器控制业务逻辑
+content = ""  # 服务器决定新版本的内容
+```
+
+**2. Pydantic模型灵活性：**
+```python
+# 必需字段
+content: str
+
+# 可选字段带默认值
+content: Optional[str] = ""
+
+# 完全可选字段
+content: Optional[str] = None
+```
+
+**3. 前后端协调：**
+- **后端变更：** 忽略客户端发送的content
+- **前端简化：** 不再发送不必要的数据
+- **向后兼容：** 旧客户端仍然可以工作
+
+**4. RESTful API最佳实践：**
+```python
+POST /api/documents/{id}/versions  # 创建新版本
+{
+  # 以前需要：content: "some content"
+  # 现在：可以是空对象 {}
+}
+```
+
+### 🔄 **数据流程变化**
+
+**修改前的流程：**
+1. 用户点击"创建新版本"
+2. 前端发送当前文档内容到后端
+3. 后端用这个内容创建新版本
+4. 新版本包含复制的内容
+
+**修改后的流程：**
+1. 用户点击"创建新版本"
+2. 前端发送空请求到后端
+3. 后端忽略任何内容，创建空版本
+4. 新版本始终是空白的
+
+### 💡 **设计思考**
+
+**为什么这样改？**
+- **用户体验：** 新版本从头开始更符合直觉
+- **业务逻辑：** 版本控制应该是创建分支，不是复制
+- **代码简化：** 减少了不必要的数据传输
+
+**向后兼容性：**
+- 旧的客户端发送content字段仍然可以工作
+- 但后端会忽略这个字段，确保行为一致
+- 新客户端可以发送更简洁的请求
+
+### 🎯 **测试建议**
+
+要验证这个改动，可以：
+1. 创建一个有内容的文档
+2. 点击"创建新版本"按钮
+3. 确认新版本是空白的，不包含原文档内容
+4. 确认可以在新版本中正常编辑和保存
+
+这个改动展示了全栈开发中前后端协调、API设计和用户体验的重要性。
+
+---
+
+# Quick Logs
+
 ## 2025-07-31 - Bug修复：AI建议状态无限循环
 
 ### 🐛 **修复的问题**

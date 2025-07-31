@@ -5,7 +5,7 @@ import logging
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select, update, func
 from sqlalchemy.orm import Session
 
 from app.internal.ai import AI, get_ai
@@ -305,11 +305,11 @@ def create_version(
         .values(is_active=False)
     )
     
-    # 创建新版本
+    # 创建新版本（空文档）
     new_version = models.DocumentVersion(
         document_id=document_id,
         version_number=new_version_number,
-        content=request.content,
+        content="",  # 新版本从空文档开始
         is_active=True,
         created_at=datetime.utcnow()
     )
@@ -433,6 +433,85 @@ def get_versions(
     ).all()
     
     return [schemas.DocumentVersionRead.model_validate(v) for v in versions]
+
+
+@app.delete("/api/documents/{document_id}/versions/{version_number}")
+def delete_version(
+    document_id: int,
+    version_number: int,
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    删除指定版本
+    
+    删除逻辑：
+    1. 验证文档存在
+    2. 检查是否至少有2个版本（不能删除最后一个版本）
+    3. 验证要删除的版本存在
+    4. 检查要删除的版本是否为当前激活版本
+    5. 如果是激活版本，先切换到最新的其他版本
+    6. 删除指定版本
+    """
+    # 查找文档
+    document = db.scalar(
+        select(models.Document)
+        .where(models.Document.id == document_id)
+    )
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # 检查版本总数
+    version_count = db.scalar(
+        select(func.count(models.DocumentVersion.id))
+        .where(models.DocumentVersion.document_id == document_id)
+    )
+    
+    if version_count <= 1:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot delete the last remaining version"
+        )
+    
+    # 查找要删除的版本
+    target_version = db.scalar(
+        select(models.DocumentVersion)
+        .where(
+            models.DocumentVersion.document_id == document_id,
+            models.DocumentVersion.version_number == version_number
+        )
+    )
+    
+    if not target_version:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Version {version_number} not found"
+        )
+    
+    # 如果删除的是当前激活版本，需要先切换到其他版本
+    if target_version.is_active:
+        # 找到最新的其他版本
+        alternative_version = db.scalar(
+            select(models.DocumentVersion)
+            .where(
+                models.DocumentVersion.document_id == document_id,
+                models.DocumentVersion.id != target_version.id
+            )
+            .order_by(models.DocumentVersion.version_number.desc())
+        )
+        
+        if alternative_version:
+            # 激活替代版本
+            alternative_version.is_active = True
+            # 更新文档的当前版本指针
+            document.current_version_id = alternative_version.id
+            document.updated_at = datetime.utcnow()
+    
+    # 删除目标版本
+    db.delete(target_version)
+    db.commit()
+    
+    return {"message": f"Version {version_number} deleted successfully"}
 
 
 @app.websocket("/ws")

@@ -88,8 +88,8 @@ class DocumentWithCurrentVersion(BaseModel):
 
 
 class CreateVersionRequest(BaseModel):
-    """创建新版本的请求模式"""
-    content: str
+    """创建新版本的请求模式 - content现在是可选的，新版本默认为空"""
+    content: Optional[str] = ""
 
 
 class SwitchVersionRequest(BaseModel):

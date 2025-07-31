@@ -60,6 +60,11 @@ interface AppState {
   aiSuggestions: AISuggestion[];  // AI建议
   aiProcessingStatus: string;     // AI处理状态消息
   isAIProcessing: boolean;        // AI是否正在处理
+  isAIEnabled: boolean;           // AI功能开关状态
+  deleteDialog: {                 // 删除确认对话框状态
+    isOpen: boolean;
+    versionNumber: number | null;
+  };
 }
 
 function App() {
@@ -72,8 +77,13 @@ function App() {
     rightSidebarCollapsed: false,
     hasUnsavedChanges: false,
     aiSuggestions: [],
-    aiProcessingStatus: "AI助手待机中",
+    aiProcessingStatus: "AI助手已关闭",
     isAIProcessing: false,
+    isAIEnabled: false,
+    deleteDialog: {
+      isOpen: false,
+      versionNumber: null
+    },  // AI默认关闭
   });
 
   // 响应式布局检测
@@ -140,7 +150,10 @@ function App() {
         currentDocument: documentData,
         documentVersions: versions,
         isLoading: false,
-        hasUnsavedChanges: false  // 重置未保存状态
+        hasUnsavedChanges: false,  // 重置未保存状态
+        isAIEnabled: false,        // 加载新文档时关闭AI
+        aiSuggestions: [],         // 清空AI建议
+        aiProcessingStatus: "AI助手已关闭"  // 更新状态消息
       }));
       setCurrentDocumentContent(documentData.content);
       
@@ -189,10 +202,8 @@ function App() {
     
     setAppState(prev => ({ ...prev, isLoading: true }));
     try {
-      // 创建新版本
-      await axios.post(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions`, {
-        content: currentDocumentContent,
-      });
+      // 创建新版本（空文档）
+      await axios.post(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions`, {});
       
       // 重新加载文档和版本历史
       await loadPatent(appState.currentDocument.id);
@@ -223,7 +234,10 @@ function App() {
         ...prev,
         currentDocument: updatedDocument,
         isLoading: false,
-        hasUnsavedChanges: false  // 切换版本后重置未保存状态
+        hasUnsavedChanges: false,  // 切换版本后重置未保存状态
+        isAIEnabled: false,        // 切换版本时关闭AI
+        aiSuggestions: [],         // 清空AI建议
+        aiProcessingStatus: "AI助手已关闭"  // 更新状态消息
       }));
       setCurrentDocumentContent(updatedDocument.content);
       
@@ -236,6 +250,56 @@ function App() {
       
     } catch (error) {
       console.error("Error switching version:", error);
+      setAppState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  /**
+   * 删除指定版本
+   * Delete a specific version
+   */
+  // 打开删除确认对话框
+  const openDeleteDialog = (versionNumber: number) => {
+    setAppState(prev => ({
+      ...prev,
+      deleteDialog: {
+        isOpen: true,
+        versionNumber
+      }
+    }));
+  };
+
+  // 关闭删除确认对话框
+  const closeDeleteDialog = () => {
+    setAppState(prev => ({
+      ...prev,
+      deleteDialog: {
+        isOpen: false,
+        versionNumber: null
+      }
+    }));
+  };
+
+  // 确认删除版本
+  const confirmDeleteVersion = async () => {
+    if (!appState.currentDocument || !appState.deleteDialog.versionNumber) return;
+    
+    const versionNumber = appState.deleteDialog.versionNumber;
+    closeDeleteDialog();
+    
+    setAppState(prev => ({ ...prev, isLoading: true }));
+    try {
+      // 删除版本
+      await axios.delete(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions/${versionNumber}`);
+      
+      // 重新加载文档和版本历史
+      await loadPatent(appState.currentDocument.id);
+      
+    } catch (error: any) {
+      console.error("Error deleting version:", error);
+      // 显示错误信息
+      const errorMessage = error.response?.data?.detail || "删除版本失败";
+      alert(errorMessage);
       setAppState(prev => ({ ...prev, isLoading: false }));
     }
   };
@@ -289,6 +353,22 @@ function App() {
       ...prev, 
       rightSidebarCollapsed: !prev.rightSidebarCollapsed 
     }));
+  };
+
+  /**
+   * 切换AI开关状态
+   * Toggle AI functionality on/off
+   */
+  const toggleAI = () => {
+    setAppState(prev => {
+      const newAIEnabled = !prev.isAIEnabled;
+      return {
+        ...prev,
+        isAIEnabled: newAIEnabled,
+        aiProcessingStatus: newAIEnabled ? "AI助手已启动" : "AI助手已关闭",
+        aiSuggestions: newAIEnabled ? prev.aiSuggestions : [],  // 关闭AI时清空建议
+      };
+    });
   };
 
   return (
@@ -399,31 +479,56 @@ function App() {
                         <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wide">版本历史</h4>
                         <div className="max-h-32 overflow-y-auto space-y-1">
                           {appState.documentVersions.map((version) => (
-                            <button
+                            <div
                               key={version.id}
-                              onClick={() => switchToVersion(version.version_number)}
-                              disabled={appState.isLoading || version.version_number === appState.currentDocument?.version_number}
-                              className={`w-full p-3 text-left rounded-md text-xs transition-all duration-200 ${
+                              className={`relative group rounded-md text-xs transition-all duration-200 border ${
                                 version.version_number === appState.currentDocument?.version_number
-                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
-                              } ${appState.isLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                  ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                              } ${appState.isLoading ? 'opacity-50' : ''}`}
                             >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-sm">v{version.version_number}.0</span>
-                                {version.version_number === appState.currentDocument?.version_number && (
-                                  <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">当前</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                创建于 {new Date(version.created_at).toLocaleString('zh-CN', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                            </button>
+                              {/* 版本信息区域 - 可点击切换 */}
+                              <button
+                                onClick={() => switchToVersion(version.version_number)}
+                                disabled={appState.isLoading || version.version_number === appState.currentDocument?.version_number}
+                                className={`w-full p-3 text-left rounded-md transition-all duration-200 ${
+                                  version.version_number === appState.currentDocument?.version_number
+                                    ? ''
+                                    : 'hover:bg-gray-100'
+                                } ${appState.isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-sm">v{version.version_number}.0</span>
+                                  {version.version_number === appState.currentDocument?.version_number && (
+                                    <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">当前</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  创建于 {new Date(version.created_at).toLocaleString('zh-CN', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              </button>
+                              
+                              {/* 删除按钮 - 只有在超过1个版本时才显示 */}
+                              {appState.documentVersions.length > 1 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openDeleteDialog(version.version_number);
+                                  }}
+                                  disabled={appState.isLoading}
+                                  className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition-colors duration-200 opacity-0 group-hover:opacity-100"
+                                  title="删除版本"
+                                  aria-label="删除版本"
+                                >
+                                  <span className="text-xs">×</span>
+                                </button>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -479,6 +584,7 @@ function App() {
                   content={currentDocumentContent}
                   onAISuggestions={handleAISuggestions}
                   onProcessingStatus={handleAIProcessingStatus}
+                  isAIEnabled={appState.isAIEnabled}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-500">
@@ -577,19 +683,36 @@ function App() {
             <div className="flex-1 p-4 overflow-y-auto">
               {/* AI建议显示区域 */}
               <div className="space-y-4">
-                {/* 标题和状态 */}
+                {/* 标题和AI开关 */}
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-800">AI 建议</h3>
-                  {appState.isAIProcessing && (
-                    <div className="flex items-center text-blue-600">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
-                      <span className="text-xs">分析中...</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {/* AI处理状态指示器 */}
+                    {appState.isAIProcessing && appState.isAIEnabled && (
+                      <div className="flex items-center text-blue-600">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
+                        <span className="text-xs">分析中...</span>
+                      </div>
+                    )}
+                    
+                    {/* AI开关按钮 */}
+                    <button
+                      onClick={toggleAI}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-200 ${
+                        appState.isAIEnabled
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                      }`}
+                      aria-label="切换AI助手"
+                    >
+                      {appState.isAIEnabled ? '🤖 AI开启' : '⚪ AI关闭'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* AI建议列表 */}
-                {appState.aiSuggestions.length > 0 ? (
+                {appState.isAIEnabled ? (
+                  appState.aiSuggestions.length > 0 ? (
                   <div className="space-y-3">
                     {appState.aiSuggestions.map((suggestion, index) => (
                       <div
@@ -641,20 +764,20 @@ function App() {
                       </div>
                     ))}
                   </div>
-                ) : (
-                  /* 空状态显示 */
-                  <div className="h-full flex flex-col items-center justify-center text-gray-500 py-8">
-                    <div className="text-center space-y-4">
-                      <div className="text-4xl">🤖</div>
-                      <div className="text-lg font-medium">AI 智能助手</div>
-                      <div className="text-sm max-w-64 text-center">
-                        {appState.isAIProcessing 
-                          ? "AI正在分析您的文档，请稍候..."
-                          : appState.currentDocument
-                          ? "开始编辑文档，AI将为您提供实时建议"
-                          : "请先选择一个文档开始编辑"
-                        }
-                      </div>
+                  ) : (
+                    /* 无建议时的空状态 */
+                    <div className="h-full flex flex-col items-center justify-center text-gray-500 py-8">
+                      <div className="text-center space-y-4">
+                        <div className="text-4xl">🤖</div>
+                        <div className="text-lg font-medium">AI 智能助手</div>
+                        <div className="text-sm max-w-64 text-center">
+                          {appState.isAIProcessing 
+                            ? "AI正在分析您的文档，请稍候..."
+                            : appState.currentDocument
+                            ? "开始编辑文档，AI将为您提供实时建议"
+                            : "请先选择一个文档开始编辑"
+                          }
+                        </div>
                       
                       {/* 功能介绍 */}
                       <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
@@ -662,6 +785,31 @@ function App() {
                           ✨ AI功能介绍
                         </div>
                         <ul className="text-xs text-blue-600 space-y-1">
+                          <li>• 专利权利要求格式检查</li>
+                          <li>• 语法和结构分析</li>
+                          <li>• 实时改进建议</li>
+                          <li>• 自动问题检测</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  )
+                ) : (
+                  /* AI关闭时的状态显示 */
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+                    <div className="text-center space-y-4">
+                      <div className="text-4xl opacity-50">🤖</div>
+                      <div className="text-lg font-medium">AI 助手已关闭</div>
+                      <div className="text-sm max-w-64 text-center">
+                        点击右上角开关启用AI功能，获得实时文档分析和建议
+                      </div>
+                      
+                      {/* 功能预览 */}
+                      <div className="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg text-left opacity-60">
+                        <div className="text-xs font-medium text-gray-600 mb-2">
+                          💡 启用后可获得
+                        </div>
+                        <ul className="text-xs text-gray-500 space-y-1">
                           <li>• 专利权利要求格式检查</li>
                           <li>• 语法和结构分析</li>
                           <li>• 实时改进建议</li>
@@ -700,6 +848,43 @@ function App() {
         </aside>
 
       </div>
+
+      {/* 删除版本确认对话框 */}
+      {appState.deleteDialog.isOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl border border-gray-200">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 mx-auto flex items-center justify-center rounded-full bg-red-100">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                删除版本确认
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                确定要删除版本 v{appState.deleteDialog.versionNumber}.0 吗？此操作无法撤销。
+              </p>
+              <div className="flex justify-center space-x-3">
+                <button
+                  onClick={closeDeleteDialog}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmDeleteVersion}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  确认删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
