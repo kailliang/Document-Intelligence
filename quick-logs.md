@@ -1,5 +1,98 @@
 # Quick Logs
 
+## 2025-07-31 11:30:00 BST - Task 1 问题修复：版本控制系统优化
+
+### 🐛 **修复的关键问题**
+
+**问题1: 文档保存功能不工作**
+- **症状**: 点击保存按钮后文档没有实际保存
+- **原因**: 后端API参数变量名冲突 (`document` 参数与数据库对象重名)
+- **解决方案**: 将参数名从 `document` 改为 `request`
+
+```python
+# 修复前 - 变量名冲突
+def save(document_id: int, document: schemas.CreateVersionRequest, db: Session):
+    document = db.scalar(select(models.Document)...)  # 冲突！
+
+# 修复后 - 清晰的变量命名  
+def save(document_id: int, request: schemas.CreateVersionRequest, db: Session):
+    document = db.scalar(select(models.Document)...)  # 现在清晰了
+```
+
+**问题2: 底部保存状态不更新**
+- **症状**: '已保存'状态始终显示，不反映实际更改状态
+- **解决方案**: 添加 `hasUnsavedChanges` 状态跟踪
+
+```typescript
+// 新增状态跟踪
+interface AppState {
+  hasUnsavedChanges: boolean;  // 跟踪未保存更改
+}
+
+// 内容变化时标记未保存
+const handleContentChange = (newContent: string) => {
+  setCurrentDocumentContent(newContent);
+  if (appState.currentDocument && newContent !== appState.currentDocument.content) {
+    setAppState(prev => ({ ...prev, hasUnsavedChanges: true }));
+  }
+};
+
+// 动态状态显示
+{appState.isLoading 
+  ? '保存中...' 
+  : appState.hasUnsavedChanges 
+    ? '有未保存更改'  // 橙色指示器
+    : '已保存'         // 绿色指示器
+}
+```
+
+**问题3: 版本历史UI间距问题**
+- **症状**: 版本号和时间戳挤在一起，难以阅读
+- **解决方案**: 优化间距和视觉层次
+
+```typescript
+// 修复前 - 间距太小
+<div className="text-xs text-gray-500 mt-0.5">
+  {new Date(version.created_at).toLocaleDateString()}
+</div>
+
+// 修复后 - 更好的间距和格式
+<div className="flex items-center justify-between mb-1">  // 增加底边距
+  <span className="font-medium text-sm">v{version.version_number}.0</span>
+</div>
+<div className="text-xs text-gray-500">
+  创建于 {new Date(version.created_at).toLocaleString('zh-CN', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  })}
+</div>
+```
+
+### 🎯 **学习要点总结**
+
+**1. 调试技巧：**
+- 使用curl测试API端点独立验证后端功能
+- 检查变量名冲突导致的运行时错误
+- 通过浏览器开发工具观察状态变化
+
+**2. 状态管理模式：**
+- 添加派生状态来跟踪UI状态变化
+- 在关键操作点（加载、保存、切换）重置状态
+- 使用条件渲染提供即时用户反馈
+
+**3. 用户体验设计：**
+- 视觉指示器（颜色、图标）传达状态信息
+- 合适的间距提高可读性
+- 实时反馈让用户了解系统状态
+
+**4. Python/FastAPI常见陷阱：**
+- 函数参数与局部变量命名冲突
+- Pydantic模型验证失败导致的内部错误
+- SQLAlchemy关系配置的微妙问题
+
+现在版本控制系统功能完整且用户体验良好！ ✨
+
+---
+
 ## 2025-07-31 11:15:00 BST - UI修复完成：专业界面最终优化
 
 ### 📋 **状态更新：UI现代化项目已完成**
