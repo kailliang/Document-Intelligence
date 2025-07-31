@@ -1,5 +1,328 @@
 # Quick Logs
 
+## 2025-07-31 - Bug修复：AI建议状态无限循环
+
+### 🐛 **修复的问题**
+
+**问题描述：**
+- AI建议面板右上角数字疯狂增长（每秒增加约100）
+- WebSocket连接成功但建议状态在循环更新
+- 控制台显示重复的AI状态更新消息
+
+**根本原因：**
+1. **回调函数不稳定** - `handleAISuggestions` 和 `handleAIProcessingStatus` 每次渲染都重新创建
+2. **重复状态更新** - 相同的AI建议被重复设置到状态中
+3. **useEffect依赖循环** - 不稳定的回调函数导致useEffect重复触发
+
+### 🔧 **修复方案**
+
+**文件1：client/src/App.tsx (第2行，第247-261行，第260-267行)**
+
+**1. 添加useCallback导入：**
+```typescript
+// 第2行 - 添加useCallback import
+import { useCallback, useEffect, useState } from "react";
+```
+**学习要点：** `useCallback` 用于缓存函数，防止不必要的重新创建，避免子组件重复渲染。
+
+**2. 稳定化AI建议处理函数：**
+```typescript
+// 第247-261行 - 使用useCallback包装回调函数
+const handleAISuggestions = useCallback((suggestions: AISuggestion[]) => {
+  console.log("🎯 更新AI建议:", suggestions.length, "个建议");
+  setAppState(prev => {
+    // 防止重复设置相同的建议
+    if (JSON.stringify(prev.aiSuggestions) === JSON.stringify(suggestions)) {
+      console.log("🔄 建议未改变，跳过更新");
+      return prev;
+    }
+    return {
+      ...prev,
+      aiSuggestions: suggestions,
+      isAIProcessing: false
+    };
+  });
+}, []);
+```
+**学习要点：**
+- `useCallback(fn, [])` - 空依赖数组表示函数永远不会改变
+- `JSON.stringify()` 比较 - 深度比较对象内容是否相同
+- `return prev` - 如果数据相同，返回原状态避免重新渲染
+
+**3. 稳定化处理状态函数：**
+```typescript
+// 第260-267行 - 同样使用useCallback
+const handleAIProcessingStatus = useCallback((isProcessing: boolean, message?: string) => {
+  console.log("📊 AI状态更新:", { isProcessing, message });
+  setAppState(prev => ({
+    ...prev,
+    isAIProcessing: isProcessing,
+    aiProcessingStatus: message || (isProcessing ? "AI处理中..." : "AI待机中")
+  }));
+}, []);
+```
+
+**文件2：client/src/Document.tsx (第43行，第134-147行)**
+
+**4. 智能内容比较：**
+```typescript
+// 第43行 - 添加lastAnalyzedContent状态跟踪
+const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");
+
+// 第134-147行 - 添加内容变化检查
+if (readyState === 1 && !isAIProcessing && content.trim() && content !== lastAnalyzedContent) {
+  console.log("📤 发送内容给AI分析，长度:", content.length);
+  setLastAnalyzedContent(content); // 记录已分析的内容
+  sendMessage(content);
+} else if (content === lastAnalyzedContent) {
+  console.log("🔄 内容未改变，跳过AI分析");
+}
+```
+**学习要点：**
+- **状态缓存** - 记录上次分析的内容，避免重复分析
+- **条件检查** - 多重条件确保只在必要时发送请求
+- **调试日志** - 帮助理解何时跳过分析
+
+### 📚 **React性能优化学习要点**
+
+**1. useCallback的使用场景：**
+```typescript
+// ❌ 错误 - 每次渲染都创建新函数
+const handleClick = (data) => { ... };
+
+// ✅ 正确 - 缓存函数，避免子组件重复渲染
+const handleClick = useCallback((data) => { ... }, [dependency]);
+```
+
+**2. 状态更新优化：**
+```typescript
+// ❌ 可能导致不必要的渲染
+setState(newValue);
+
+// ✅ 检查后再更新
+setState(prev => {
+  if (prev === newValue) return prev; // 避免重新渲染
+  return newValue;
+});
+```
+
+**3. 深度比较的权衡：**
+```typescript
+// 简单值比较 - 性能好
+if (prev.count === newCount) return prev;
+
+// 对象深度比较 - 准确但消耗性能
+if (JSON.stringify(prev.data) === JSON.stringify(newData)) return prev;
+```
+
+**4. WebSocket消息处理最佳实践：**
+```typescript
+// ✅ 稳定的处理函数避免重复订阅
+const messageHandler = useCallback((message) => {
+  // 处理逻辑
+}, []);
+
+// ✅ 防抖避免频繁调用
+const debouncedSend = useCallback(
+  debounce((content) => { ... }, 1000),
+  [dependencies]
+);
+```
+
+### 🎯 **修复效果**
+
+现在系统运行更稳定：
+- ✅ AI建议数字不再疯狂跳动
+- ✅ 只在内容真正改变时才发送AI分析
+- ✅ 重复的建议不会触发状态更新
+- ✅ WebSocket消息处理更高效
+- ✅ 控制台日志更清晰，便于调试
+
+这次修复展示了React性能优化的核心概念：缓存函数、避免不必要渲染、智能状态比较。
+
+## 2025-07-31 - Bug修复：编辑器滚动和状态栏可见性
+
+### 🐛 **修复的问题**
+
+**问题描述：**
+1. 当文档内容超过一页时，底部状态栏会消失
+2. 文档页面无法滚动到底部，只能通过移动光标查看
+
+**根本原因：**
+- Flexbox布局高度计算问题
+- 缺少正确的overflow属性设置
+- 容器嵌套导致滚动区域错误
+
+### 🔧 **修复方案**
+
+**文件：client/src/App.tsx (第449-489行)**
+```css
+/* 添加min-h-0确保flex容器正确计算高度 */
+<main className="flex-1 flex flex-col bg-white min-h-0">
+
+/* 工具栏添加flex-shrink-0防止被压缩 */
+<div className="... flex-shrink-0">
+
+/* 编辑器区域添加overflow-hidden防止内容撑开 */
+<div className="flex-1 p-4 overflow-hidden">
+  <div className="h-full ... overflow-hidden">
+
+/* 状态栏添加flex-shrink-0确保始终可见 */
+<div className="... flex-shrink-0">
+```
+
+**文件：client/src/Document.tsx (第137-141行)**
+```typescript
+// 改进的编辑器容器结构
+<div className="w-full h-full flex flex-col">
+  {/* 使用flex-1和overflow-y-auto实现滚动 */}
+  <div className="flex-1 overflow-y-auto p-4">
+    <Editor handleEditorChange={handleEditorChange} content={content} />
+  </div>
+</div>
+```
+
+**文件：client/src/index.css (第370-411行)**
+```css
+/* TipTap编辑器样式优化 */
+.ProseMirror {
+  min-height: 400px;  /* 确保最小高度 */
+  padding: 1rem;      /* 内边距改善可读性 */
+}
+```
+
+### 📚 **学习要点**
+
+1. **Flexbox高度计算：**
+   - `min-h-0` 解决flex子元素高度溢出问题
+   - `flex-shrink-0` 防止重要元素被压缩
+   - `overflow-hidden` 限制内容区域
+
+2. **滚动容器设计：**
+   - 只在需要滚动的容器上设置 `overflow-y-auto`
+   - 确保父容器有明确的高度限制
+   - 避免多层嵌套的滚动容器
+
+3. **编辑器最佳实践：**
+   - 为编辑器设置最小高度提升体验
+   - 内边距让内容不贴边
+   - focus时去除outline保持美观
+
+现在长文档可以正常滚动，状态栏始终保持可见！
+
+---
+
+## 2025-07-31 - Task 2 完成：实时AI建议系统
+
+## 2025-07-31 - Task 2 完成：实时AI建议系统
+
+### 🎯 **任务完成：实现WebSocket AI建议流式传输**
+
+**完成的核心功能：**
+
+1. ✅ **HTML到纯文本转换器 (server/app/internal/text_utils.py)**
+   - 使用BeautifulSoup4解析HTML内容
+   - 保留段落结构和列表格式
+   - 特殊处理<p>和<li>标签以保持文档结构
+   - 文本验证确保满足AI服务要求
+
+2. ✅ **流式JSON解析器 (StreamingJSONParser类)**
+   - 三层解析策略：直接解析、清理后解析、对象提取
+   - 处理碎片化的JSON响应
+   - 容错设计，适应各种格式问题
+   - 详细的错误日志记录
+
+3. ✅ **WebSocket端点完整实现 (server/app/__main__.py)**
+   - 接收HTML内容，转换为纯文本
+   - 调用AI服务进行文档审查
+   - 流式处理AI响应
+   - 实时发送解析后的建议到前端
+   - 全面的错误处理和状态消息
+
+4. ✅ **前端集成 (client/src/Document.tsx)**
+   - TypeScript接口定义确保类型安全
+   - WebSocket消息分类处理
+   - 防抖机制减少AI请求频率
+   - 回调函数传递AI建议和处理状态
+
+5. ✅ **AI建议UI界面 (client/src/App.tsx)**
+   - 实时显示AI建议卡片
+   - 根据严重程度显示不同颜色
+   - 处理状态动画和指示器
+   - 空状态友好提示
+   - 建议统计摘要
+
+### 🛠️ **技术实现细节**
+
+**关键代码片段：**
+
+```python
+# HTML转换器 - 保持文档结构
+def html_to_plain_text(html_content: str) -> str:
+    soup = BeautifulSoup(html_content, 'html.parser')
+    # 特殊处理段落，确保双换行
+    for p_tag in soup.find_all('p'):
+        p_tag.insert_after('\n\n')
+    text = soup.get_text()
+    # 清理多余空行
+    text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+    return text.strip()
+```
+
+```typescript
+// WebSocket消息处理
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  switch (message.type) {
+    case 'ai_suggestions':
+      onAISuggestionsReceived?.(message.data.issues || []);
+      break;
+    case 'status':
+      onAIProcessingStatusChange?.(message.message);
+      break;
+    case 'error':
+      console.error('AI error:', message.message);
+      break;
+  }
+};
+```
+
+### 📚 **学习要点**
+
+1. **WebSocket通信模式：**
+   - 双向实时通信
+   - 消息类型分类处理
+   - 状态管理和错误处理
+
+2. **流式数据处理：**
+   - 增量解析策略
+   - 缓冲区管理
+   - 容错和回退机制
+
+3. **React状态管理：**
+   - 提升状态到父组件
+   - 回调函数传递数据
+   - 防抖优化性能
+
+4. **类型安全：**
+   - TypeScript接口定义
+   - 严格的类型检查
+   - 运行时验证
+
+### 🚀 **下一步计划**
+
+任务2已完整实现，系统现在支持：
+- 实时文档编辑时的AI建议
+- 流式响应处理，用户体验流畅
+- 完善的错误处理和用户反馈
+- 专业的UI展示建议内容
+
+建议进行端到端测试，验证：
+1. WebSocket连接稳定性
+2. AI建议的准确性和相关性
+3. 不同文档长度的性能表现
+4. 错误场景的处理效果
+
 ## 2025-07-31 11:30:00 BST - Task 1 问题修复：版本控制系统优化
 
 ### 🐛 **修复的关键问题**

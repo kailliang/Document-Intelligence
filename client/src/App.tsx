@@ -1,5 +1,5 @@
 import Document from "./Document";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import LoadingOverlay from "./internal/LoadingOverlay";
 import Logo from "./assets/logo.png";
@@ -41,6 +41,15 @@ interface DocumentWithCurrentVersion {
   last_modified: string;
 }
 
+// AI建议相关的接口
+interface AISuggestion {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  paragraph: number;
+  description: string;
+  suggestion: string;
+}
+
 interface AppState {
   currentDocument: DocumentWithCurrentVersion | null;
   documentVersions: DocumentVersion[];
@@ -48,6 +57,9 @@ interface AppState {
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
   hasUnsavedChanges: boolean;  // 跟踪是否有未保存的更改
+  aiSuggestions: AISuggestion[];  // AI建议
+  aiProcessingStatus: string;     // AI处理状态消息
+  isAIProcessing: boolean;        // AI是否正在处理
 }
 
 function App() {
@@ -59,6 +71,9 @@ function App() {
     leftSidebarCollapsed: false,
     rightSidebarCollapsed: false,
     hasUnsavedChanges: false,
+    aiSuggestions: [],
+    aiProcessingStatus: "AI助手待机中",
+    isAIProcessing: false,
   });
 
   // 响应式布局检测
@@ -224,6 +239,39 @@ function App() {
       setAppState(prev => ({ ...prev, isLoading: false }));
     }
   };
+
+  /**
+   * 处理AI建议回调
+   * Handle AI suggestions from WebSocket
+   */
+  const handleAISuggestions = useCallback((suggestions: AISuggestion[]) => {
+    console.log("🎯 更新AI建议:", suggestions.length, "个建议");
+    setAppState(prev => {
+      // 防止重复设置相同的建议
+      if (JSON.stringify(prev.aiSuggestions) === JSON.stringify(suggestions)) {
+        console.log("🔄 建议未改变，跳过更新");
+        return prev;
+      }
+      return {
+        ...prev,
+        aiSuggestions: suggestions,
+        isAIProcessing: false
+      };
+    });
+  }, []);
+
+  /**
+   * 处理AI处理状态回调
+   * Handle AI processing status updates
+   */
+  const handleAIProcessingStatus = useCallback((isProcessing: boolean, message?: string) => {
+    console.log("📊 AI状态更新:", { isProcessing, message });
+    setAppState(prev => ({
+      ...prev,
+      isAIProcessing: isProcessing,
+      aiProcessingStatus: message || (isProcessing ? "AI处理中..." : "AI待机中")
+    }));
+  }, []);
 
   /**
    * 切换侧边栏显示状态
@@ -405,9 +453,9 @@ function App() {
         </aside>
 
         {/* 中间区域 - 文档编辑区 */}
-        <main className="flex-1 flex flex-col bg-white">
+        <main className="flex-1 flex flex-col bg-white min-h-0">
           {/* 文档工具栏 */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
             <div className="flex items-center space-x-4">
               <h2 className="text-xl font-semibold text-gray-800">
                 {appState.currentDocument?.title || "请选择文档"}
@@ -422,13 +470,15 @@ function App() {
             </div>
           </div>
 
-          {/* 编辑器主区域 */}
-          <div className="flex-1 p-4">
-            <div className="h-full bg-white border border-gray-200 rounded-lg shadow-sm">
+          {/* 编辑器主区域 - 添加overflow-hidden确保内容不会撑开容器 */}
+          <div className="flex-1 p-4 overflow-hidden">
+            <div className="h-full bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
               {appState.currentDocument ? (
                 <Document
                   onContentChange={handleContentChange}
                   content={currentDocumentContent}
+                  onAISuggestions={handleAISuggestions}
+                  onProcessingStatus={handleAIProcessingStatus}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-500">
@@ -442,10 +492,12 @@ function App() {
             </div>
           </div>
 
-          {/* 状态栏 */}
-          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 text-sm text-gray-600">
+          {/* 状态栏 - 添加flex-shrink-0确保始终可见 */}
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-200 text-sm text-gray-600 flex-shrink-0">
             <div className="flex items-center space-x-4">
               <span>字数: {currentDocumentContent.length}</span>
+              
+              {/* 文档保存状态 */}
               <span className={`flex items-center ${
                 appState.isLoading 
                   ? 'text-yellow-600' 
@@ -466,6 +518,18 @@ function App() {
                     ? '有未保存更改' 
                     : '已保存'
                 }
+              </span>
+              
+              {/* AI处理状态 */}
+              <span className={`flex items-center ${
+                appState.isAIProcessing ? 'text-blue-600' : 'text-gray-500'
+              }`}>
+                <div className={`w-2 h-2 rounded-full mr-2 ${
+                  appState.isAIProcessing ? 'bg-blue-400 animate-pulse' : 'bg-gray-400'
+                }`}></div>
+                <span className="text-xs">
+                  🤖 {appState.aiProcessingStatus}
+                </span>
               </span>
             </div>
             <div>
@@ -510,31 +574,126 @@ function App() {
 
           {/* 右侧栏内容 */}
           {!appState.rightSidebarCollapsed && (
-            <div className="flex-1 p-4">
-              {/* AI功能预留区域 */}
-              <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
-                <div className="text-center space-y-4">
-                  <div className="text-4xl">🤖</div>
-                  <div className="text-lg font-medium">AI Agent 预留区</div>
-                  <div className="text-sm max-w-48">
-                    此区域为未来的AI功能预留，将包括:
-                    <ul className="mt-2 text-left list-disc list-inside space-y-1">
-                      <li>智能建议</li>
-                      <li>内容分析</li>
-                      <li>自动优化</li>
-                      <li>实时反馈</li>
-                    </ul>
-                  </div>
-                  
-                  <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="text-xs text-blue-800">
-                      🔮 未来功能预览
+            <div className="flex-1 p-4 overflow-y-auto">
+              {/* AI建议显示区域 */}
+              <div className="space-y-4">
+                {/* 标题和状态 */}
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-800">AI 建议</h3>
+                  {appState.isAIProcessing && (
+                    <div className="flex items-center text-blue-600">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
+                      <span className="text-xs">分析中...</span>
                     </div>
-                    <div className="text-xs text-blue-600 mt-1">
-                      WebSocket连接状态: 已连接
-                    </div>
-                  </div>
+                  )}
                 </div>
+
+                {/* AI建议列表 */}
+                {appState.aiSuggestions.length > 0 ? (
+                  <div className="space-y-3">
+                    {appState.aiSuggestions.map((suggestion, index) => (
+                      <div
+                        key={index}
+                        className={`p-3 rounded-lg border-l-4 ${
+                          suggestion.severity === 'high'
+                            ? 'border-red-500 bg-red-50'
+                            : suggestion.severity === 'medium'
+                            ? 'border-yellow-500 bg-yellow-50'
+                            : 'border-blue-500 bg-blue-50'
+                        }`}
+                      >
+                        {/* 建议头部 */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-medium text-gray-600">
+                            段落 {suggestion.paragraph}
+                          </span>
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              suggestion.severity === 'high'
+                                ? 'bg-red-200 text-red-800'
+                                : suggestion.severity === 'medium'
+                                ? 'bg-yellow-200 text-yellow-800'
+                                : 'bg-blue-200 text-blue-800'
+                            }`}
+                          >
+                            {suggestion.severity === 'high' ? '严重' : 
+                             suggestion.severity === 'medium' ? '中等' : '轻微'}
+                          </span>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                            {suggestion.type}
+                          </span>
+                        </div>
+
+                        {/* 问题描述 */}
+                        <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+                          {suggestion.description}
+                        </p>
+
+                        {/* AI建议 */}
+                        <div className="bg-white p-2 rounded border">
+                          <div className="flex items-start gap-2">
+                            <span className="text-green-600 text-sm font-medium">💡 建议:</span>
+                            <p className="text-sm text-green-700 leading-relaxed">
+                              {suggestion.suggestion}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* 空状态显示 */
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 py-8">
+                    <div className="text-center space-y-4">
+                      <div className="text-4xl">🤖</div>
+                      <div className="text-lg font-medium">AI 智能助手</div>
+                      <div className="text-sm max-w-64 text-center">
+                        {appState.isAIProcessing 
+                          ? "AI正在分析您的文档，请稍候..."
+                          : appState.currentDocument
+                          ? "开始编辑文档，AI将为您提供实时建议"
+                          : "请先选择一个文档开始编辑"
+                        }
+                      </div>
+                      
+                      {/* 功能介绍 */}
+                      <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
+                        <div className="text-xs font-medium text-blue-800 mb-2">
+                          ✨ AI功能介绍
+                        </div>
+                        <ul className="text-xs text-blue-600 space-y-1">
+                          <li>• 专利权利要求格式检查</li>
+                          <li>• 语法和结构分析</li>
+                          <li>• 实时改进建议</li>
+                          <li>• 自动问题检测</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 建议统计 */}
+                {appState.aiSuggestions.length > 0 && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span>共发现 {appState.aiSuggestions.length} 个建议</span>
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                          严重: {appState.aiSuggestions.filter(s => s.severity === 'high').length}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                          中等: {appState.aiSuggestions.filter(s => s.severity === 'medium').length}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                          轻微: {appState.aiSuggestions.filter(s => s.severity === 'low').length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

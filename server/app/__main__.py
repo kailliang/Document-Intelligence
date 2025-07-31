@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+import json
+import logging
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,11 @@ from sqlalchemy.orm import Session
 from app.internal.ai import AI, get_ai
 from app.internal.data import DOCUMENT_1, DOCUMENT_2
 from app.internal.db import Base, SessionLocal, engine, get_db
+from app.internal.text_utils import html_to_plain_text, validate_text_for_ai, StreamingJSONParser
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 import app.models as models
 import app.schemas as schemas
@@ -429,19 +436,168 @@ def get_versions(
 
 
 @app.websocket("/ws")
-async def websocket(websocket: WebSocket, ai: AI = Depends(get_ai)):
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket端点：实时AI建议系统
+    
+    工作流程：
+    1. 接收来自前端的HTML内容
+    2. 转换为纯文本格式
+    3. 调用AI服务进行流式分析
+    4. 解析AI响应的JSON数据
+    5. 发送完整建议给前端
+    
+    消息格式：
+    - 接收：HTML字符串 (来自TipTap编辑器)
+    - 发送：JSON对象 {"type": "ai_suggestions", "data": {...}}
+    """
     await websocket.accept()
+    logger.info("WebSocket连接已建立")
+    
+    # 尝试初始化AI服务
+    try:
+        ai = get_ai()
+        logger.info("✅ AI服务初始化成功")
+        # 发送连接成功消息
+        success_msg = {
+            "type": "connection_success",
+            "message": "AI服务已就绪",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await websocket.send_text(json.dumps(success_msg))
+    except ValueError as e:
+        logger.error(f"❌ AI服务初始化失败: {str(e)}")
+        error_response = {
+            "type": "server_error",
+            "message": "AI服务未配置：请确保在 server/.env 文件中设置了 OPENAI_API_KEY",
+            "details": str(e)
+        }
+        await websocket.send_text(json.dumps(error_response))
+        await websocket.close()
+        return
+    except Exception as e:
+        logger.error(f"❌ 未预期的AI初始化错误: {str(e)}")
+        error_response = {
+            "type": "server_error",
+            "message": "AI服务初始化失败",
+            "details": str(e)
+        }
+        await websocket.send_text(json.dumps(error_response))
+        await websocket.close()
+        return
+    
+    # 为每个连接创建JSON解析器
+    json_parser = StreamingJSONParser()
+    
     while True:
         try:
-            """
-            The AI doesn't expect to receive any HTML.
-            You can call ai.review_document to receive suggestions from the LLM.
-            Remember, the output from the LLM will not be deterministic, so you may want to validate the output before sending it to the client.
-            """
-            document = await websocket.receive_text()
-            print("Received data via websocket")
+            # 接收HTML内容
+            html_content = await websocket.receive_text()
+            logger.info(f"接收到HTML内容，长度: {len(html_content)}")
+            
+            # 第一步：转换HTML为纯文本
+            plain_text = html_to_plain_text(html_content)
+            
+            # 第二步：验证文本是否适合AI处理
+            is_valid, error_message = validate_text_for_ai(plain_text)
+            
+            if not is_valid:
+                # 发送验证错误给客户端
+                error_response = {
+                    "type": "validation_error",
+                    "message": error_message,
+                    "details": f"HTML长度: {len(html_content)}, 文本长度: {len(plain_text)}"
+                }
+                await websocket.send_text(json.dumps(error_response))
+                logger.warning(f"文本验证失败: {error_message}")
+                continue
+            
+            # 第三步：发送处理开始通知
+            start_response = {
+                "type": "processing_start",
+                "message": "AI正在分析文档...",
+                "text_length": len(plain_text)
+            }
+            await websocket.send_text(json.dumps(start_response))
+            logger.info("开始AI分析...")
+            
+            # 第四步：重置JSON解析器为新的分析
+            json_parser.reset()
+            
+            # 第五步：调用AI进行流式分析
+            try:
+                async for chunk in ai.review_document(plain_text):
+                    if chunk:
+                        # 尝试解析JSON块
+                        parsed_result = json_parser.add_chunk(chunk)
+                        
+                        if parsed_result:
+                            # 成功解析完整JSON，发送给客户端
+                            success_response = {
+                                "type": "ai_suggestions",
+                                "data": parsed_result,
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                            await websocket.send_text(json.dumps(success_response))
+                            logger.info(f"AI分析完成，发现 {len(parsed_result.get('issues', []))} 个问题")
+                            break  # 完成一次分析
+                            
+                # 如果流结束但没有完整的JSON，尝试最后一次解析
+                if json_parser.buffer:
+                    logger.warning("AI流结束但JSON不完整，尝试最后解析...")
+                    final_result = json_parser.add_chunk("")  # 触发最终解析尝试
+                    if final_result:
+                        success_response = {
+                            "type": "ai_suggestions",
+                            "data": final_result,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                        await websocket.send_text(json.dumps(success_response))
+                        logger.info("最终解析成功")
+                    else:
+                        # 解析失败，发送错误
+                        error_response = {
+                            "type": "parsing_error",
+                            "message": "AI响应解析失败",
+                            "buffer_info": json_parser.get_buffer_info()
+                        }
+                        await websocket.send_text(json.dumps(error_response))
+                        logger.error("AI响应解析最终失败")
+                        
+            except Exception as ai_error:
+                # AI调用出错
+                logger.error(f"AI服务错误: {ai_error}")
+                error_response = {
+                    "type": "ai_error", 
+                    "message": f"AI服务出错: {str(ai_error)}",
+                    "details": "请检查API密钥配置和网络连接"
+                }
+                await websocket.send_text(json.dumps(error_response))
+                
         except WebSocketDisconnect:
+            logger.info("客户端断开WebSocket连接")
             break
+            
+        except json.JSONEncodeError as json_error:
+            logger.error(f"JSON编码错误: {json_error}")
+            error_response = {
+                "type": "json_error",
+                "message": "服务器响应编码错误"
+            }
+            # 尝试发送简单错误消息
+            try:
+                await websocket.send_text('{"type":"error","message":"JSON encoding error"}')
+            except:
+                pass
+                
         except Exception as e:
-            print(f"Error occurred: {e}")
-            continue
+            logger.error(f"WebSocket处理错误: {e}")
+            try:
+                error_response = {
+                    "type": "server_error",
+                    "message": f"服务器内部错误: {str(e)}"
+                }
+                await websocket.send_text(json.dumps(error_response))
+            except:
+                # 如果连接已断开，忽略发送错误
+                break

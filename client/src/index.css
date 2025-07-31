@@ -368,6 +368,49 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ===================================================================
+   TipTap 编辑器样式
+   =================================================================== */
+.tiptap {
+  min-height: 100%;
+  outline: none;
+}
+
+.tiptap p {
+  margin: 0 0 1rem 0;
+}
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  line-height: 1.1;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.tiptap ul,
+.tiptap ol {
+  padding: 0 1rem;
+  margin: 0 0 1rem 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* 确保编辑器内容区域有最小高度 */
+.ProseMirror {
+  min-height: 400px;
+  padding: 1rem;
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* ===================================================================
    打印样式
    =================================================================== */
 @media print {
