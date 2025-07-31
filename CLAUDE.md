@@ -70,3 +70,18 @@ The application has basic CRUD operations for documents but is incomplete:
 - Uses SQLAlchemy with in-memory SQLite
 - Auto-creates tables on startup with seed data (2 documents)
 - No migrations - database resets on server restart
+
+## SSH Key for GitHub (iak1257 account)
+
+Copy the following SSH public key and add it to GitHub at: https://github.com/iak1257/settings/keys
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINV6SKJCTKvh/v+f+Dem2qLS33eKr88LRKLrwiA1xI/c iak1257@users.noreply.github.com
+```
+
+**Steps to add SSH key:**
+1. Go to https://github.com/iak1257/settings/keys
+2. Click "New SSH key"
+3. Title: `MacBook Pro - iak1257`
+4. Key: Paste the above SSH public key
+5. Click "Add SSH key"
