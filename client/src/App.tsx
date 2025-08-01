@@ -402,39 +402,35 @@ function App() {
                 isVisible
               });
               
-              if (!isVisible) {
-                // 元素不可见 - 需要滚动，根据文档位置选择滚动策略
-                const elementTop = highlightElement.offsetTop;
-                const documentHeight = document.documentElement.scrollHeight;
-                const documentPosition = elementTop / documentHeight;
-                
-                if (documentPosition < 0.3) {
-                  // 文档前30% - 滚动到顶部显示，避免居中抖动
-                  highlightElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start',
-                    inline: 'nearest'
-                  });
-                  console.log('✅ 文档顶部内容，滚动到start位置');
-                } else if (documentPosition > 0.7) {
-                  // 文档后30% - 滚动到底部显示
-                  highlightElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'end',
-                    inline: 'nearest'
-                  });
-                  console.log('✅ 文档底部内容，滚动到end位置');
-                } else {
-                  // 文档中间 - 可以安全居中
-                  highlightElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center',
-                    inline: 'nearest'
-                  });
-                  console.log('✅ 文档中间内容，滚动到center位置');
-                }
+              // 直接用viewport坐标判断可见性 - 简单明了
+              const isInViewport = 
+                elementRect.bottom > 0 && 
+                elementRect.top < window.innerHeight;
+              
+              // 检查是否有足够的内容可见（至少20px）
+              const visibleHeight = Math.min(elementRect.bottom, window.innerHeight) - Math.max(elementRect.top, 0);
+              const hasEnoughVisible = visibleHeight >= 20;
+              
+              console.log('📊 简化可见性检查:', {
+                elementRect,
+                isInViewport,
+                visibleHeight,
+                hasEnoughVisible,
+                windowHeight: window.innerHeight
+              });
+              
+              if (isInViewport && hasEnoughVisible) {
+                console.log('✅ 元素在viewport中且有足够内容可见，无需滚动');
               } else {
-                console.log('✅ 元素已可见，跳过滚动');
+                // 元素不在viewport或可见内容不足 - 需要滚动到合理位置
+                console.log('📊 元素需要滚动到可见位置');
+                
+                highlightElement.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                  inline: 'nearest'
+                });
+                console.log('✅ 滚动到center位置');
               }
             } else {
               console.warn('❌ 未找到高亮元素，使用备用滚动方案');
@@ -967,17 +963,8 @@ function App() {
                 <div className="flex-1 p-4 overflow-y-auto">
                   {/* AI建议显示区域 */}
                   <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-800">AI 建议</h3>
+                <div className="flex items-center justify-end">
                   <div className="flex items-center gap-3">
-                    {/* AI处理状态指示器 */}
-                    {appState.isAIProcessing && (
-                      <div className="flex items-center text-blue-600">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
-                        <span className="text-xs">分析中...</span>
-                      </div>
-                    )}
-                    
                     {/* AI分析按钮 */}
                     <button
                       onClick={triggerAIAnalysis}

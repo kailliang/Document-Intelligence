@@ -288,12 +288,6 @@ export default function Document({
         />
       </div>
       
-      {/* 调试信息 - 可选显示 */}
-      {import.meta.env.DEV && (
-        <div className="fixed bottom-20 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
-          WebSocket: {readyState === 1 ? 'Open' : `State:${readyState}`} | AI处理: {isAIProcessing ? '进行中' : '空闲'}
-        </div>
-      )}
     </div>
   );
 }
