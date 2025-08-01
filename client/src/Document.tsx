@@ -1,6 +1,5 @@
 import Editor from "./internal/Editor";
 import useWebSocket from "react-use-websocket";
-import { debounce } from "lodash";
 import { useCallback, useEffect, useState } from "react";
 
 // TypeScript interfaces for AI suggestions
@@ -9,6 +8,7 @@ interface AISuggestion {
   severity: 'high' | 'medium' | 'low';
   paragraph: number;
   description: string;
+  text?: string;  // 新增：精确的原始文本
   suggestion: string;
 }
 
@@ -27,9 +27,9 @@ interface WebSocketMessage {
 export interface DocumentProps {
   onContentChange: (content: string) => void;
   content: string;
-  onAISuggestions?: (suggestions: AISuggestion[]) => void;  // 新增：AI建议回调
-  onProcessingStatus?: (isProcessing: boolean, message?: string) => void;  // 新增：处理状态回调
-  isAIEnabled: boolean;  // 新增：AI开关状态
+  onAISuggestions?: (suggestions: AISuggestion[]) => void;  // AI建议回调
+  onProcessingStatus?: (isProcessing: boolean, message?: string) => void;  // 处理状态回调
+  onManualAnalysis?: (analysisFunction: () => void) => void;  // 注册手动分析函数的回调
 }
 
 const SOCKET_URL = "ws://localhost:8000/ws";
@@ -39,7 +39,7 @@ export default function Document({
   content, 
   onAISuggestions,
   onProcessingStatus,
-  isAIEnabled
+  onManualAnalysis
 }: DocumentProps) {
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");
@@ -128,50 +128,61 @@ export default function Document({
     }
   }, [lastMessage, onAISuggestions, onProcessingStatus]);
 
-  // Debounce editor content changes
-  const sendEditorContent = useCallback(
-    debounce((content: string) => {
-      // 只有在AI开启、WebSocket连接且不在处理中时才发送
-      // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-      if (isAIEnabled && readyState === 1 && !isAIProcessing && content.trim() && content !== lastAnalyzedContent) {
-        console.log("📤 发送内容给AI分析，长度:", content.length);
-        setLastAnalyzedContent(content); // 记录已分析的内容
-        sendMessage(content);
-      } else if (!isAIEnabled) {
-        console.log("🔒 AI功能已关闭，跳过分析");
-      } else if (content === lastAnalyzedContent) {
-        console.log("🔄 内容未改变，跳过AI分析");
-      } else if (readyState !== 1) {
-        console.warn("⚠️ WebSocket未连接，跳过AI分析，状态:", readyState);
-        onProcessingStatus?.(false, "AI助手未连接");
-      } else if (isAIProcessing) {
-        console.log("⏳ AI正在处理中，跳过新请求");
-      }
-    }, 3000), // 防抖时间改为3秒
-    [sendMessage, readyState, isAIProcessing, onProcessingStatus, lastAnalyzedContent, isAIEnabled]
-  );
+  // 手动触发AI分析
+  const triggerManualAnalysis = useCallback(() => {
+    // 检查WebSocket连接状态和处理状态
+    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+    if (readyState !== 1) {
+      console.warn("⚠️ WebSocket未连接，无法进行AI分析，状态:", readyState);
+      onProcessingStatus?.(false, "AI助手未连接");
+      return;
+    }
+    
+    if (isAIProcessing) {
+      console.log("⏳ AI正在处理中，跳过新请求");
+      onProcessingStatus?.(false, "AI正在处理中，请稍候...");
+      return;
+    }
+    
+    if (!content.trim()) {
+      console.log("📄 文档内容为空，跳过AI分析");
+      onProcessingStatus?.(false, "文档内容为空");
+      return;
+    }
+    
+    console.log("📤 手动触发AI分析，内容长度:", content.length);
+    setLastAnalyzedContent(content); // 记录已分析的内容
+    sendMessage(content);
+  }, [content, readyState, isAIProcessing, sendMessage, onProcessingStatus]);
+
+  // 注册手动分析函数
+  useEffect(() => {
+    if (onManualAnalysis) {
+      onManualAnalysis(triggerManualAnalysis);
+    }
+  }, [triggerManualAnalysis, onManualAnalysis]);
 
   const handleEditorChange = (content: string) => {
     onContentChange(content);
-    sendEditorContent(content);
+    // 移除自动AI分析：sendEditorContent(content);
   };
 
-  // 当AI开启且文档内容加载时，发送给AI分析
-  useEffect(() => {
-    console.log("📊 文档状态:", { 
-      hasContent: !!content, 
-      contentLength: content?.length,
-      readyState, 
-      isAIProcessing,
-      isAIEnabled
-    });
-    
-    // 只有在AI开启时才自动分析
-    if (isAIEnabled && content && readyState === 1 && !isAIProcessing && content !== lastAnalyzedContent) {
-      console.log("📄 AI开启，立即分析文档内容");
-      sendEditorContent(content);
-    }
-  }, [content, readyState, isAIProcessing, sendEditorContent, lastAnalyzedContent, isAIEnabled]);
+  // 移除自动AI分析功能
+  // useEffect(() => {
+  //   console.log("📊 文档状态:", { 
+  //     hasContent: !!content, 
+  //     contentLength: content?.length,
+  //     readyState, 
+  //     isAIProcessing,
+  //     isAIEnabled
+  //   });
+  //   
+  //   // 只有在AI开启时才自动分析
+  //   if (isAIEnabled && content && readyState === 1 && !isAIProcessing && content !== lastAnalyzedContent) {
+  //     console.log("📄 AI开启，立即分析文档内容");
+  //     sendEditorContent(content);
+  //   }
+  // }, [content, readyState, isAIProcessing, sendEditorContent, lastAnalyzedContent, isAIEnabled]);
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -181,7 +192,7 @@ export default function Document({
       </div>
       
       {/* 调试信息 - 可选显示 */}
-      {process.env.NODE_ENV === 'development' && (
+      {import.meta.env.DEV && (
         <div className="fixed bottom-20 left-4 bg-black bg-opacity-75 text-white text-xs p-2 rounded z-50">
           WebSocket: {readyState === 1 ? 'Open' : `State:${readyState}`} | AI处理: {isAIProcessing ? '进行中' : '空闲'}
         </div>
