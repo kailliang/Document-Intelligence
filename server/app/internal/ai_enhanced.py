@@ -49,6 +49,7 @@ class AIEnhanced:
         # 使用Function Calling进行分析
         stream = await self._client.chat.completions.create(
             model=self.model,
+            temperature=0.1,  # 低温度确保输出稳定性和Function Calling可靠性
             messages=[
                 {"role": "system", "content": ENHANCED_PROMPT},
                 {"role": "user", "content": document},
@@ -157,6 +158,7 @@ class AIEnhanced:
         """
         stream = await self._client.chat.completions.create(
             model=self.model,
+            temperature=0.2,  # 聊天时稍高一点的温度，保持一定创造性
             messages=messages,
             tools=FUNCTION_TOOLS,
             tool_choice="auto",

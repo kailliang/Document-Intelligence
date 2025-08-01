@@ -1,6 +1,6 @@
 import Editor from "./internal/Editor";
 import useWebSocket, { ReadyState } from "react-use-websocket";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 
 // TypeScript interfaces for AI suggestions
 interface AISuggestion {
@@ -51,6 +51,9 @@ export default function Document({
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   // const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");  // 暂时注释，将来可能需要
   const [isWebSocketReady, setIsWebSocketReady] = useState(false);
+  
+  // 添加编辑器实例引用
+  const editorRef = useRef<any>(null);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(SOCKET_URL, {
     onOpen: () => {
@@ -162,6 +165,21 @@ export default function Document({
       socketURL: SOCKET_URL
     });
     
+    // 获取编辑器中的最新内容，而不是使用props中的content
+    let currentContent = content; // 默认使用props内容
+    
+    // 如果编辑器实例存在，直接从编辑器获取最新内容
+    if (editorRef?.current) {
+      try {
+        currentContent = editorRef.current.getHTML() || content;
+        console.log("📝 从编辑器获取最新内容，长度:", currentContent.length);
+      } catch (error) {
+        console.warn("⚠️ 无法从编辑器获取内容，使用props内容:", error);
+      }
+    }
+    
+    console.log("📄 将要分析的内容长度:", currentContent.length);
+    
     // 使用更宽松的连接检查
     if (!isSocketActuallyReady()) {
       if (readyState === ReadyState.CONNECTING) {
@@ -185,20 +203,20 @@ export default function Document({
       return;
     }
     
-    if (!content.trim()) {
+    if (!currentContent.trim()) {
       console.log("📄 文档内容为空，跳过AI分析");
       onProcessingStatus?.(false, "文档内容为空");
       return;
     }
     
-    console.log("📤 手动触发AI分析，内容长度:", content.length);
+    console.log("📤 手动触发AI分析，内容长度:", currentContent.length);
     // setLastAnalyzedContent(content); // 记录已分析的内容 - 暂时注释
     
     try {
       // 先设置处理状态
       onProcessingStatus?.(true, "正在发送分析请求...");
       
-      sendMessage(content);
+      sendMessage(currentContent); // 使用最新的内容而不是props中的content
       console.log("✅ AI分析请求已发送");
       
       // 发送成功后更新状态
@@ -215,7 +233,17 @@ export default function Document({
         }, 2000);
       }
     }
-  }, [content, isSocketActuallyReady, isAIProcessing, sendMessage, onProcessingStatus, readyState]);
+  }, [isSocketActuallyReady, isAIProcessing, sendMessage, onProcessingStatus, readyState]); // 移除content依赖
+  
+  // 处理编辑器实例就绪
+  const handleEditorReady = useCallback((editor: any) => {
+    editorRef.current = editor;
+    console.log('📝 Document: 编辑器实例已准备就绪');
+    // 同时调用App.tsx的回调
+    if (onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [onEditorReady]);
 
   // 注册手动分析函数
   useEffect(() => {
@@ -256,7 +284,7 @@ export default function Document({
         <Editor 
           handleEditorChange={handleEditorChange} 
           content={content} 
-          onEditorReady={onEditorReady}
+          onEditorReady={handleEditorReady}
         />
       </div>
       

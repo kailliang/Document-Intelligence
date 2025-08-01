@@ -55,6 +55,7 @@ class AI:
         """
         stream = await self._client.chat.completions.create(
             model=self.model,
+            temperature=0.1,  # 低温度确保专利分析的稳定性和一致性
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": PROMPT},
