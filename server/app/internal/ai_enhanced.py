@@ -55,13 +55,13 @@ class AIEnhanced:
                 {"role": "user", "content": document},
             ],
             tools=FUNCTION_TOOLS,
-            tool_choice={"type": "function", "function": {"name": "create_suggestion"}},  # 强制使用函数调用
+            tool_choice="auto",  # 让AI自动决定调用多少次函数，而不是强制单次调用
             stream=True,
         )
 
         # 收集function calls
         function_calls = []
-        current_function_call = None
+        current_function_calls = {}  # 用字典跟踪多个并行的function calls
         
         logger.info("🔄 开始处理AI流式响应...")
         
@@ -76,22 +76,27 @@ class AIEnhanced:
             if delta.tool_calls:
                 logger.info(f"🔧 收到tool call: {delta.tool_calls}")
                 for tool_call in delta.tool_calls:
-                    if tool_call.index == 0 and tool_call.function.name:
-                        # 新的function call
-                        if current_function_call:
-                            function_calls.append(current_function_call)
-                        current_function_call = {
+                    call_index = tool_call.index
+                    
+                    if tool_call.function.name:
+                        # 新的function call开始
+                        if call_index in current_function_calls:
+                            # 如果这个index已经有function call，先保存之前的
+                            function_calls.append(current_function_calls[call_index])
+                        
+                        current_function_calls[call_index] = {
                             "name": tool_call.function.name,
                             "arguments": tool_call.function.arguments or ""
                         }
-                        logger.info(f"🆕 新的function call: {tool_call.function.name}")
-                    elif current_function_call:
-                        # 继续累积arguments
-                        current_function_call["arguments"] += tool_call.function.arguments or ""
+                        logger.info(f"🆕 新的function call {call_index}: {tool_call.function.name}")
+                        
+                    elif call_index in current_function_calls:
+                        # 继续累积这个index的arguments
+                        current_function_calls[call_index]["arguments"] += tool_call.function.arguments or ""
         
-        # 添加最后一个function call
-        if current_function_call:
-            function_calls.append(current_function_call)
+        # 添加所有剩余的function calls
+        for call_index, func_call in current_function_calls.items():
+            function_calls.append(func_call)
         
         logger.info(f"📊 收集到 {len(function_calls)} 个function calls")
         for i, call in enumerate(function_calls):
@@ -106,40 +111,48 @@ class AIEnhanced:
                     args = json.loads(func_call["arguments"])
                     logger.info(f"✅ 解析function arguments成功: {args}")
                     
-                    # 转换为期望的格式
-                    issue = {
-                        "type": args.get("type", ""),
-                        "severity": args.get("severity", "medium"),
-                        "paragraph": args.get("paragraph", 1),
-                        "description": args.get("description", ""),
-                        "text": args.get("originalText", ""),  # 映射字段
-                        "suggestion": args.get("replaceTo", ""),  # 映射字段
-                        "originalText": args.get("originalText", ""),
-                        "replaceTo": args.get("replaceTo", "")
-                    }
-                    issues.append(issue)
-                    logger.info(f"📝 添加建议: {issue['type']} - {issue['description'][:50]}...")
+                    # 处理新格式：一个文本段可能有多个issues
+                    text_issues = args.get("issues", [])
+                    
+                    # 如果是旧格式（向后兼容）
+                    if not text_issues and args.get("type"):
+                        text_issues = [{
+                            "type": args.get("type", ""),
+                            "severity": args.get("severity", "medium"),
+                            "description": args.get("description", "")
+                        }]
+                    
+                    # 创建一个单一的建议条目，包含所有issues
+                    if text_issues:
+                        # 合并所有issues的类型和描述
+                        types = [issue.get("type", "") for issue in text_issues]
+                        descriptions = [issue.get("description", "") for issue in text_issues]
+                        severities = [issue.get("severity", "medium") for issue in text_issues]
+                        
+                        # 选择最高严重度
+                        severity_order = {"high": 3, "medium": 2, "low": 1}
+                        max_severity = max(severities, key=lambda x: severity_order.get(x, 2))
+                        
+                        # 创建单一建议
+                        issue = {
+                            "type": " & ".join(types),  # 合并所有issue类型
+                            "severity": max_severity,
+                            "paragraph": args.get("paragraph", 1),
+                            "description": " | ".join(descriptions),  # 合并所有描述
+                            "text": args.get("originalText", ""),  # 映射字段
+                            "suggestion": args.get("replaceTo", ""),  # 映射字段
+                            "originalText": args.get("originalText", ""),
+                            "replaceTo": args.get("replaceTo", ""),
+                            "issues": text_issues  # 保留详细的issues数组供UI使用
+                        }
+                        issues.append(issue)
+                        logger.info(f"📝 添加建议: {issue['type']} - 包含 {len(text_issues)} 个问题")
                 except json.JSONDecodeError as e:
                     logger.error(f"❌ JSON解析失败: {e}")
                     logger.error(f"❌ 原始arguments: {func_call['arguments']}")
                     continue
         
         logger.info(f"✨ 最终生成 {len(issues)} 个建议")
-        
-        # 如果没有找到任何建议，创建一个测试建议（临时调试用）
-        if len(issues) == 0:
-            logger.warning("⚠️ 没有收到任何建议，创建测试建议")
-            test_issue = {
-                "type": "test",
-                "severity": "low",
-                "paragraph": 1,
-                "description": "测试建议：文档分析功能正常工作",
-                "text": "测试文本",
-                "suggestion": "这是一个测试建议",
-                "originalText": "测试文本",
-                "replaceTo": "这是一个测试建议"
-            }
-            issues.append(test_issue)
         
         # 生成JSON响应
         response = json.dumps({"issues": issues}, ensure_ascii=False)

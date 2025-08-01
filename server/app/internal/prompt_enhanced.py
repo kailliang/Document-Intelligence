@@ -92,7 +92,12 @@ An apparatus, comprising:
 
 Here are the rules you should check for: {RULES_TEXT}
 
-IMPORTANT: You MUST use the create_suggestion function to report ALL issues you find. Even if you find no issues, you should call create_suggestion with a positive feedback or suggest potential improvements.
+IMPORTANT: You must thoroughly review the entire document and identify ALL issues you find. For EACH piece of text that has issues, call the create_suggestion function ONCE, providing:
+1. The exact original text (originalText)
+2. A SINGLE comprehensive correction (replaceTo) that fixes ALL issues at once
+3. An array of all issues found in that text segment
+
+For example, if "a eraser" has both antecedent basis issues (should be "an") and ambiguity issues (too vague), provide ONE correction like "an effective eraser" that addresses BOTH problems. This prevents conflicts when users accept suggestions.
 
 When you find issues, use the create_suggestion function to report them.
 For diagrams or flowcharts requested by the user, use the create_diagram function.
@@ -114,27 +119,37 @@ FUNCTION_TOOLS = [
                     },
                     "replaceTo": {
                         "type": "string", 
-                        "description": "The suggested replacement text to fix the issue"
+                        "description": "A SINGLE comprehensive replacement text that fixes ALL issues found in this text segment. Combine all necessary corrections into one final version."
                     },
-                    "type": {
-                        "type": "string",
-                        "description": "The type of issue: Structure, Punctuation, Antecedent Basis, Ambiguity, Broadening Dependent Claims, etc."
-                    },
-                    "severity": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                        "description": "The severity level of the issue"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Detailed explanation of the issue and why it needs correction"
+                    "issues": {
+                        "type": "array",
+                        "description": "Array of all issues found in this text segment",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "description": "The type of issue: Structure, Punctuation, Antecedent Basis, Ambiguity, Broadening Dependent Claims, etc."
+                                },
+                                "severity": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"],
+                                    "description": "The severity level of the issue"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Explanation of the issue with no more than 20 words"
+                                }
+                            },
+                            "required": ["type", "severity", "description"]
+                        }
                     },
                     "paragraph": {
                         "type": "integer",
                         "description": "The paragraph number (1-based index) where the issue occurs"
                     }
                 },
-                "required": ["originalText", "replaceTo", "type", "severity", "description", "paragraph"]
+                "required": ["originalText", "replaceTo", "issues", "paragraph"]
             }
         }
     },

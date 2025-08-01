@@ -11,24 +11,29 @@ This is a **Patent Review System** - a full-stack web application that enables u
 **Frontend (React + TypeScript)**
 - **TipTap** rich text editor for document editing with custom highlight extensions
 - **WebSocket** connection for real-time AI suggestions and chat functionality
-- **React Query** for API state management
+- **Tab-based UI** with integrated suggestions and chat panels
 - **Tailwind CSS** with Emotion for styling
-- **Mermaid** for diagram generation
+- **Mermaid** for diagram generation in chat
+- **ProseMirror API** for precise text matching and highlighting
 
 **Backend (FastAPI + Python)**
 - **SQLAlchemy** ORM with SQLite database
-- **WebSocket** endpoints for real-time features (`/ws` and `/ws/enhanced`)
-- **OpenAI GPT-4** integration for patent analysis and chat functionality
+- **Dual WebSocket** endpoints: `/ws` (basic) and `/ws/enhanced` (Function Calling)
+- **OpenAI GPT-4** integration with Function Calling for precise suggestions
 - **Streaming JSON parser** for handling intermittent AI API responses
-- Document versioning system with complete CRUD operations
+- **Document versioning system** with complete CRUD operations
+- **Enhanced AI endpoints** for chat and diagram generation
 
 **Key Components:**
-- `client/src/App.tsx`: Main application state management and UI orchestration
-- `client/src/Document.tsx`: Document editor with WebSocket AI integration
-- `client/src/ChatPanel.tsx`: AI chat interface with streaming responses
+- `client/src/App.tsx`: Main application state management and tab-based UI orchestration
+- `client/src/Document.tsx`: Document editor with WebSocket AI integration and real-time content sync
+- `client/src/ChatPanel.tsx`: AI chat interface with streaming responses and Mermaid diagram support
+- `client/src/internal/HighlightExtension.tsx`: Custom TipTap extension for text highlighting and replacement
 - `server/app/__main__.py`: Core FastAPI routes and WebSocket handlers
+- `server/app/enhanced_endpoints.py`: Enhanced WebSocket and chat endpoints
+- `server/app/internal/ai_enhanced.py`: Enhanced AI with Function Calling for multiple suggestions
+- `server/app/internal/prompt_enhanced.py`: Specialized prompts for patent analysis with rule-based validation
 - `server/app/models.py`: Database models for Document and DocumentVersion tables
-- `server/app/internal/ai.py`: OpenAI integration with streaming capabilities
 
 ## Development Commands
 
@@ -43,6 +48,13 @@ npm run preview      # Preview production build
 **Backend (from `/server`):**
 ```bash
 python -m app        # Start FastAPI server with uvicorn
+uvicorn app.__main__:app --reload  # Alternative with hot reload
+```
+
+**Environment Setup:**
+```bash
+./activate-backend.sh    # Activate conda environment (patent-backend)
+./activate-frontend.sh   # Setup frontend environment
 ```
 
 **Docker (from project root):**
@@ -51,7 +63,7 @@ docker-compose up --build    # Build and run both services
 ```
 
 **Development Scripts:**
-- `activate-backend.sh`: Backend setup script
+- `activate-backend.sh`: Backend setup script (conda environment: patent-backend)
 - `activate-frontend.sh`: Frontend setup script
 
 ## Database Architecture
@@ -86,39 +98,62 @@ The system uses a **versioning model** with two main entities:
 - `DELETE /api/documents/{id}/versions/{version_number}` - Delete version
 
 **Real-time Features:**
-- `WebSocket /ws` - Basic AI document analysis
-- `WebSocket /ws/enhanced` - Enhanced AI with function calling capabilities
-- `POST /api/chat` - AI chat interface
+- `WebSocket /ws` - Basic AI document analysis (legacy)
+- `WebSocket /ws/enhanced` - Enhanced AI with Function Calling capabilities (preferred)
+- `POST /api/chat` - AI chat interface with Mermaid diagram support
 
 ## AI Integration Details
 
-**Core AI Workflow:**
+**Enhanced AI Architecture:**
+The system uses two AI processing modes:
+
+1. **Basic Mode** (`/ws`): Legacy WebSocket using streaming JSON responses
+2. **Enhanced Mode** (`/ws/enhanced`): Function Calling with precise text matching
+
+**Enhanced AI Workflow:**
 1. HTML content from TipTap editor is converted to plain text
-2. Text validation ensures content is suitable for AI processing
-3. OpenAI GPT-4 streams back JSON-formatted suggestions
-4. Custom StreamingJSONParser handles intermittent JSON formatting issues
-5. Frontend receives suggestions and applies highlighting to specific text
+2. Text validation ensures content is suitable for AI processing  
+3. OpenAI GPT-4 with Function Calling generates structured suggestions
+4. Multiple parallel `create_suggestion` function calls for comprehensive analysis
+5. Frontend receives suggestions with precise `originalText` and `replaceTo` fields
+6. Real-time text highlighting using ProseMirror API for exact matches
+
+**AI Function Calling Configuration:**
+- **Temperature**: 0.1 for analysis (stability), 0.2 for chat (creativity)
+- **Tool Choice**: "auto" (allows multiple function calls per analysis)
+- **Single Suggestion per Text**: AI calls `create_suggestion` once per text segment, combining all issues into one comprehensive correction
+- **Rule-Based Analysis**: Uses predefined patent claim rules (Structure, Punctuation, Antecedent Basis, etc.)
 
 **AI Suggestion Format:**
 ```json
 {
   "issues": [{
-    "type": "error_type",
-    "severity": "high|medium|low", 
+    "type": "Structure & Punctuation",           // Combined types if multiple issues
+    "severity": "high",                          // Highest severity among all issues
     "paragraph": 1,
-    "description": "Issue description",
-    "text": "original_text",
-    "originalText": "exact_match_text",
-    "replaceTo": "suggested_replacement"
+    "description": "Issue 1 desc | Issue 2 desc", // Combined descriptions
+    "text": "original_text",                     // Legacy field
+    "suggestion": "suggested_correction",         // Legacy field  
+    "originalText": "exact_match_text",          // Enhanced: precise text matching
+    "replaceTo": "comprehensive_replacement",     // Enhanced: fixes ALL issues at once
+    "issues": [                                  // Detailed breakdown of all issues
+      {"type": "Structure", "severity": "high", "description": "Missing colon"},
+      {"type": "Punctuation", "severity": "medium", "description": "Wrong punctuation"}
+    ]
   }]
 }
 ```
 
 **Enhanced Features:**
-- Real-time text highlighting in editor based on AI suggestions
-- Accept/copy/dismiss functionality for each suggestion
-- Streaming chat interface with context awareness
-- Manual trigger for AI analysis (non-automatic)
+- **Precise Text Matching**: Uses `originalText` field for exact document text matching
+- **Real-time Content Sync**: Editor content retrieved via `editorRef.current.getHTML()`
+- **One Card per Text**: Each text segment gets ONE suggestion card with a comprehensive correction that fixes ALL issues
+- **Manual Analysis Trigger**: User-initiated AI analysis (non-automatic)
+- **Tab-based UI Integration**: Suggestions and chat panels integrated in right sidebar
+- **Accept/Copy/Dismiss Actions**: Interactive suggestion cards with action buttons
+- **Smart Sorting**: Suggestions automatically sorted by severity (high→medium→low) and paragraph order
+- **Clean Highlighting**: Pure visual highlighting without text selection - only moves cursor position for scrolling
+- **Mermaid Diagram Support**: AI can generate flowcharts and system diagrams in chat
 
 ## Configuration Requirements
 
@@ -138,23 +173,33 @@ VITE_USE_ENHANCED_WS=true
 ## Important Technical Notes
 
 **WebSocket Implementation:**
-- Uses `react-use-websocket` with automatic reconnection
-- Shared WebSocket connections to prevent multiple instances
-- Robust error handling for connection failures and AI API issues
+- **Dual WebSocket Support**: Basic (`/ws`) and Enhanced (`/ws/enhanced`) endpoints
+- **Connection Management**: Uses `react-use-websocket` with automatic reconnection and shared connections
+- **State Handling**: Relaxed connection checks allow requests during CONNECTING state
+- **Error Handling**: Comprehensive error messages for connection failures and AI API issues
 
-**Text Processing Pipeline:**
-- HTML→Plain text conversion using BeautifulSoup
-- Text validation (length, content checks)
-- Streaming JSON parsing to handle API response inconsistencies
+**Enhanced AI Processing:**
+- **Function Calling**: Uses indexed dictionary to handle multiple parallel function calls
+- **Streaming Parser**: Custom StreamingJSONParser handles intermittent JSON formatting issues  
+- **Real-time Document Sync**: Editor content accessed via `editorRef.current.getHTML()` for current state
+- **Multiple Function Calls**: AI processes entire document and calls `create_suggestion` separately for each issue
+
+**Text Processing and Highlighting:**
+- **HTML→Plain Text**: BeautifulSoup conversion with text validation
+- **ProseMirror Integration**: Direct editor manipulation for precise text highlighting and replacement
+- **Custom TipTap Extension**: `HighlightExtension.tsx` provides `findTextInDocument` and `replaceText` utilities
+- **Temporary Highlights**: Click-to-highlight functionality with auto-clear timers
 
 **Frontend State Management:**
-- Single `AppState` object manages all application state
-- Real-time updates via WebSocket callbacks
-- Proper cleanup of timers and highlights
+- **Unified AppState**: Single state object manages all application state including tabs, suggestions, and processing status
+- **Tab Navigation**: Right sidebar supports 'suggestions' and 'chat' tabs with `activeRightTab` state
+- **Real-time Updates**: WebSocket callbacks update UI state immediately
+- **Editor Instance Management**: `editorRef` provides access to current editor content independent of React props
 
 **Database Considerations:**
-- SQLAlchemy relationships with proper foreign key handling
-- Cascade deletion for versions when documents are deleted
-- UTC timestamps for all datetime fields
+- **SQLAlchemy Relationships**: Proper foreign key handling between Document and DocumentVersion tables
+- **Version Management**: Active version tracking with `is_active` flag and `current_version_id`
+- **Cascade Deletion**: Versions deleted when documents are removed, with safety checks
+- **UTC Timestamps**: All datetime fields use UTC for consistency
 
 The codebase implements a complete patent review workflow with sophisticated real-time AI features, comprehensive version control, and a responsive user interface.

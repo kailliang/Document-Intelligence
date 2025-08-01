@@ -135,13 +135,16 @@ export const Highlight = Mark.create<HighlightOptions>({
         },
       clearTemporaryHighlights:
         () =>
-        ({ view, state }) => {
+        ({ view }) => {
           if (highlightTimeout) {
             clearTimeout(highlightTimeout);
             highlightTimeout = null;
           }
           temporaryDecorations = DecorationSet.empty;
-          view.dispatch(state.tr);
+          
+          // 强制重新渲染以清除高亮装饰
+          view.dispatch(view.state.tr);
+          
           return true;
         },
     };

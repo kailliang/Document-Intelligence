@@ -372,9 +372,77 @@ function App() {
         // 添加临时高亮
         editor.commands.addTemporaryHighlight(position.from, position.to, suggestion.severity);
         
-        // 滚动到高亮位置
+        // 不设置光标选中，只添加高亮和滚动
         editor.commands.focus();
-        editor.commands.setTextSelection(position);
+        
+        // 等待高亮装饰渲染完成后滚动到居中位置
+        setTimeout(() => {
+          if (editorRef.current) {
+            // 通过CSS选择器找到高亮元素
+            const highlightElement = editorRef.current.view.dom.querySelector(
+              `.temporary-highlight-${suggestion.severity}`
+            );
+            
+            if (highlightElement) {
+              // 找到真正的滚动容器并检查元素可见性
+              const scrollContainer = findScrollContainer(highlightElement);
+              const containerRect = scrollContainer.getBoundingClientRect();
+              const elementRect = highlightElement.getBoundingClientRect();
+              
+              // 相对于滚动容器计算可见性
+              const isVisible = 
+                elementRect.top >= containerRect.top && 
+                elementRect.bottom <= containerRect.bottom;
+              
+              // 添加调试信息
+              console.log('📊 可见性调试信息:', {
+                scrollContainer: scrollContainer.className || scrollContainer.tagName,
+                containerRect: { top: containerRect.top, bottom: containerRect.bottom, height: containerRect.height },
+                elementRect: { top: elementRect.top, bottom: elementRect.bottom, height: elementRect.height },
+                isVisible
+              });
+              
+              if (!isVisible) {
+                // 元素不可见 - 需要滚动，根据文档位置选择滚动策略
+                const elementTop = highlightElement.offsetTop;
+                const documentHeight = document.documentElement.scrollHeight;
+                const documentPosition = elementTop / documentHeight;
+                
+                if (documentPosition < 0.3) {
+                  // 文档前30% - 滚动到顶部显示，避免居中抖动
+                  highlightElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                    inline: 'nearest'
+                  });
+                  console.log('✅ 文档顶部内容，滚动到start位置');
+                } else if (documentPosition > 0.7) {
+                  // 文档后30% - 滚动到底部显示
+                  highlightElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'end',
+                    inline: 'nearest'
+                  });
+                  console.log('✅ 文档底部内容，滚动到end位置');
+                } else {
+                  // 文档中间 - 可以安全居中
+                  highlightElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                    inline: 'nearest'
+                  });
+                  console.log('✅ 文档中间内容，滚动到center位置');
+                }
+              } else {
+                console.log('✅ 元素已可见，跳过滚动');
+              }
+            } else {
+              console.warn('❌ 未找到高亮元素，使用备用滚动方案');
+              // 备用方案：设置光标位置触发滚动
+              editorRef.current.commands.setTextSelection(position.from);
+            }
+          }
+        }, 100); // 增加延迟确保高亮装饰已渲染
         
         console.log(`✅ 成功高亮文本: "${searchText.substring(0, 50)}..."`);
       } else {
@@ -421,6 +489,29 @@ function App() {
       }
     };
   }, []);
+
+  /**
+   * 找到元素的真正滚动容器
+   * Find the actual scroll container for an element
+   */
+  const findScrollContainer = (element: Element): Element => {
+    let parent = element.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      if (
+        style.overflow === 'scroll' || 
+        style.overflow === 'auto' || 
+        style.overflowY === 'scroll' || 
+        style.overflowY === 'auto'
+      ) {
+        console.log('🔍 找到滚动容器:', parent.className || parent.tagName);
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+    console.log('🔍 未找到滚动容器，使用document.documentElement');
+    return document.documentElement;
+  };
 
   /**
    * 切换侧边栏显示状态
@@ -924,7 +1015,22 @@ function App() {
                 {/* AI建议列表 */}
                 {appState.aiSuggestions.length > 0 ? (
                   <div className="space-y-3">
-                    {appState.aiSuggestions.map((suggestion, index) => (
+                    {/* 对建议进行排序：先按严重程度(high->medium->low)，再按段落顺序 */}
+                    {[...appState.aiSuggestions]
+                      .sort((a, b) => {
+                        const severityOrder = { high: 3, medium: 2, low: 1 };
+                        const severityA = severityOrder[a.severity] || 2;
+                        const severityB = severityOrder[b.severity] || 2;
+                        
+                        // 先按严重程度排序（降序）
+                        if (severityA !== severityB) {
+                          return severityB - severityA;
+                        }
+                        
+                        // 相同严重程度按段落排序（升序）
+                        return a.paragraph - b.paragraph;
+                      })
+                      .map((suggestion, index) => (
                       <div
                         key={index}
                         className={`p-3 rounded-lg border-l-4 transition-all duration-200 ${
