@@ -4,117 +4,157 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a patent review application challenge with a React/TypeScript frontend and Python FastAPI backend. The application provides document version control, real-time AI suggestions via WebSocket streaming, and a modern three-column UI for patent document editing and review.
-
-## Development Commands
-
-### Frontend (client/)
-- `npm install` - Install dependencies
-- `npm run dev` - Start development server (runs on port 5173)
-- `npm run build` - Build for production (runs TypeScript compiler then Vite build)
-- `npm run lint` - Run ESLint with TypeScript extensions
-- `npm run preview` - Preview production build
-
-### Backend (server/)
-- `pip install -r requirements.txt` - Install Python dependencies (includes BeautifulSoup4 for text processing)
-- `uvicorn app.__main__:app --reload` - Start development server with auto-reload (runs on port 8000)
-- Create `.env` file with `OPENAI_API_KEY` and `OPENAI_MODEL` before running
-
-### Docker
-- `docker-compose up --build` - Build and run both services in containers
+This is a **Patent Review System** - a full-stack web application that enables users to review, edit, and analyze patent documents with AI assistance. The system includes document versioning, real-time AI suggestions, and a chat interface for enhanced user interaction.
 
 ## Architecture
 
-### Backend Structure (FastAPI + SQLAlchemy + WebSocket)
-- `server/app/__main__.py` - Main FastAPI application with REST routes and WebSocket endpoint for real-time AI
-- `server/app/models.py` - Database models with Document and DocumentVersion for version control
-- `server/app/schemas.py` - Pydantic schemas for API serialization
-- `server/app/internal/` - Internal modules:
-  - `ai.py` - OpenAI integration with streaming document review
-  - `text_utils.py` - HTML-to-plaintext conversion and streaming JSON parsing
-  - `db.py` - Database configuration and session management
-  - `data.py` - Seed data for documents
-  - `prompt.py` - AI prompt templates
+**Frontend (React + TypeScript)**
+- **TipTap** rich text editor for document editing with custom highlight extensions
+- **WebSocket** connection for real-time AI suggestions and chat functionality
+- **React Query** for API state management
+- **Tailwind CSS** with Emotion for styling
+- **Mermaid** for diagram generation
 
-### Frontend Structure (React + TypeScript + WebSocket)
-- `client/src/App.tsx` - Main application with three-column layout, state management, and AI suggestions UI
-- `client/src/Document.tsx` - Document component with WebSocket integration for real-time AI communication
-- `client/src/internal/` - Internal components:
-  - `Editor.tsx` - TipTap rich text editor component
-  - `LoadingOverlay.tsx` - Loading UI component
+**Backend (FastAPI + Python)**
+- **SQLAlchemy** ORM with SQLite database
+- **WebSocket** endpoints for real-time features (`/ws` and `/ws/enhanced`)
+- **OpenAI GPT-4** integration for patent analysis and chat functionality
+- **Streaming JSON parser** for handling intermittent AI API responses
+- Document versioning system with complete CRUD operations
 
-### Key Technologies
-- Frontend: React 18, TypeScript, TipTap editor, TanStack Query, Tailwind CSS, Vite, WebSocket (react-use-websocket)
-- Backend: FastAPI, SQLAlchemy, OpenAI SDK, WebSockets, Pydantic, BeautifulSoup4
-- Database: In-memory SQLite (resets on server restart)
+**Key Components:**
+- `client/src/App.tsx`: Main application state management and UI orchestration
+- `client/src/Document.tsx`: Document editor with WebSocket AI integration
+- `client/src/ChatPanel.tsx`: AI chat interface with streaming responses
+- `server/app/__main__.py`: Core FastAPI routes and WebSocket handlers
+- `server/app/models.py`: Database models for Document and DocumentVersion tables
+- `server/app/internal/ai.py`: OpenAI integration with streaming capabilities
 
-## Completed Features
+## Development Commands
 
-### Task 1: Document Version Control
-- Complete version management system with Document and DocumentVersion models
-- REST API endpoints for creating, switching, and managing versions
-- Frontend UI for version selection and creation in left sidebar
-- Version history display with timestamps and current version indicators
+**Frontend (from `/client`):**
+```bash
+npm run dev          # Start development server (Vite)
+npm run build        # Build for production (TypeScript + Vite)
+npm run lint         # ESLint with TypeScript support
+npm run preview      # Preview production build
+```
 
-### Task 2: Real-time AI Suggestions  
-- WebSocket endpoint (`/ws`) for streaming AI analysis
-- HTML-to-plaintext conversion using BeautifulSoup4 preserving document structure
-- Streaming JSON parser with multi-tier fallback strategies for malformed AI responses
-- Real-time AI suggestions display in right sidebar with severity-based color coding
-- Debounced content analysis to prevent excessive API calls
-- Comprehensive error handling and user feedback
+**Backend (from `/server`):**
+```bash
+python -m app        # Start FastAPI server with uvicorn
+```
 
-## AI Integration Architecture
+**Docker (from project root):**
+```bash
+docker-compose up --build    # Build and run both services
+```
 
-### Data Flow
-1. **HTML Input**: TipTap editor outputs HTML content
-2. **Text Conversion**: `text_utils.html_to_plain_text()` converts HTML to plain text preserving structure
-3. **AI Processing**: OpenAI API streams JSON responses with patent review suggestions
-4. **JSON Parsing**: `StreamingJSONParser` handles fragmented/malformed JSON from AI stream
-5. **UI Display**: Suggestions displayed in real-time with severity indicators
+**Development Scripts:**
+- `activate-backend.sh`: Backend setup script
+- `activate-frontend.sh`: Frontend setup script
 
-### WebSocket Message Types
-- `connection_success` - AI service ready
-- `processing_start` - AI analysis beginning
-- `ai_suggestions` - Streaming suggestions data
-- `validation_error` - Text validation issues
-- `ai_error` / `server_error` - Error handling
+## Database Architecture
 
-### Performance Optimizations
-- 1-second debounce on content changes
-- Content change detection to avoid duplicate analysis
-- Cached callback functions with `useCallback` to prevent render loops
-- Smart state comparison to skip unnecessary updates
+The system uses a **versioning model** with two main entities:
 
-## Database Schema
+**Document Table:**
+- Stores document metadata (title, current_version_id, timestamps)
+- Points to the currently active version
 
-### Document (Main table)
-- Stores document metadata and current version reference
-- `current_version_id` points to active DocumentVersion
-
-### DocumentVersion (Version storage)  
+**DocumentVersion Table:**
 - Stores actual content for each version
-- `version_number` for user-friendly versioning (v1.0, v2.0)
-- `is_active` flag for current version tracking
+- Tracks version numbers (v1.0, v2.0, etc.)
+- Maintains version history with `is_active` flag
 
-## WebSocket Implementation Notes
+**Key Features:**
+- Create new versions (empty documents)
+- Switch between existing versions  
+- Edit and save any version without creating new ones
+- Delete versions (with safety checks to prevent deleting the last version)
 
-- Frontend uses `react-use-websocket` with automatic reconnection
-- Backend streams AI responses in real-time using FastAPI WebSocket
-- Error handling includes validation, AI service errors, and connection issues
-- Message parsing handles incomplete JSON chunks from streaming responses
+## API Endpoints Structure
 
-## SSH Key for GitHub (iak1257 account)
+**Legacy Compatibility Endpoints:**
+- `GET /document/{id}` - Get document with current version content
+- `POST /save/{id}` - Save content to current active version
 
-Copy the following SSH public key and add it to GitHub at: https://github.com/iak1257/settings/keys
+**Version Management API:**
+- `GET /api/documents/{id}/versions` - List all versions
+- `POST /api/documents/{id}/versions` - Create new version
+- `POST /api/documents/{id}/switch-version` - Switch active version
+- `DELETE /api/documents/{id}/versions/{version_number}` - Delete version
 
+**Real-time Features:**
+- `WebSocket /ws` - Basic AI document analysis
+- `WebSocket /ws/enhanced` - Enhanced AI with function calling capabilities
+- `POST /api/chat` - AI chat interface
+
+## AI Integration Details
+
+**Core AI Workflow:**
+1. HTML content from TipTap editor is converted to plain text
+2. Text validation ensures content is suitable for AI processing
+3. OpenAI GPT-4 streams back JSON-formatted suggestions
+4. Custom StreamingJSONParser handles intermittent JSON formatting issues
+5. Frontend receives suggestions and applies highlighting to specific text
+
+**AI Suggestion Format:**
+```json
+{
+  "issues": [{
+    "type": "error_type",
+    "severity": "high|medium|low", 
+    "paragraph": 1,
+    "description": "Issue description",
+    "text": "original_text",
+    "originalText": "exact_match_text",
+    "replaceTo": "suggested_replacement"
+  }]
+}
 ```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINV6SKJCTKvh/v+f+Dem2qLS33eKr88LRKLrwiA1xI/c iak1257@users.noreply.github.com
+
+**Enhanced Features:**
+- Real-time text highlighting in editor based on AI suggestions
+- Accept/copy/dismiss functionality for each suggestion
+- Streaming chat interface with context awareness
+- Manual trigger for AI analysis (non-automatic)
+
+## Configuration Requirements
+
+**Environment Variables (.env files needed):**
+
+`server/.env`:
+```
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4o
 ```
 
-**Steps to add SSH key:**
-1. Go to https://github.com/iak1257/settings/keys
-2. Click "New SSH key"
-3. Title: `MacBook Pro - iak1257`
-4. Key: Paste the above SSH public key
-5. Click "Add SSH key"
+`client/.env`:
+```
+VITE_USE_ENHANCED_WS=true
+```
+
+## Important Technical Notes
+
+**WebSocket Implementation:**
+- Uses `react-use-websocket` with automatic reconnection
+- Shared WebSocket connections to prevent multiple instances
+- Robust error handling for connection failures and AI API issues
+
+**Text Processing Pipeline:**
+- HTML→Plain text conversion using BeautifulSoup
+- Text validation (length, content checks)
+- Streaming JSON parsing to handle API response inconsistencies
+
+**Frontend State Management:**
+- Single `AppState` object manages all application state
+- Real-time updates via WebSocket callbacks
+- Proper cleanup of timers and highlights
+
+**Database Considerations:**
+- SQLAlchemy relationships with proper foreign key handling
+- Cascade deletion for versions when documents are deleted
+- UTC timestamps for all datetime fields
+
+The codebase implements a complete patent review workflow with sophisticated real-time AI features, comprehensive version control, and a responsive user interface.

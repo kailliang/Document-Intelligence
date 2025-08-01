@@ -680,3 +680,22 @@ async def websocket_endpoint(websocket: WebSocket):
             except:
                 # 如果连接已断开，忽略发送错误
                 break
+
+
+# 尝试导入增强版端点（如果可用）
+try:
+    from app.enhanced_endpoints import websocket_enhanced_endpoint, chat_with_ai, ChatRequest
+    
+    # 注册增强版WebSocket端点
+    @app.websocket("/ws/enhanced")
+    async def enhanced_websocket_route(websocket: WebSocket):
+        await websocket_enhanced_endpoint(websocket)
+    
+    # 注册聊天API端点
+    @app.post("/api/chat")
+    async def chat_endpoint(request: ChatRequest):
+        return await chat_with_ai(request)
+    
+    logger.info("✅ 增强版端点已注册")
+except ImportError as e:
+    logger.warning(f"⚠️ 增强版端点不可用: {e}")

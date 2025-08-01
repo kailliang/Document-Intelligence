@@ -1,5 +1,5 @@
 import Editor from "./internal/Editor";
-import useWebSocket from "react-use-websocket";
+import useWebSocket, { ReadyState } from "react-use-websocket";
 import { useCallback, useEffect, useState } from "react";
 
 // TypeScript interfaces for AI suggestions
@@ -10,6 +10,8 @@ interface AISuggestion {
   description: string;
   text?: string;  // 新增：精确的原始文本
   suggestion: string;
+  originalText?: string;  // 新增：原始文本（用于精确匹配）
+  replaceTo?: string;     // 新增：建议替换的文本
 }
 
 interface AIResponse {
@@ -30,34 +32,50 @@ export interface DocumentProps {
   onAISuggestions?: (suggestions: AISuggestion[]) => void;  // AI建议回调
   onProcessingStatus?: (isProcessing: boolean, message?: string) => void;  // 处理状态回调
   onManualAnalysis?: (analysisFunction: () => void) => void;  // 注册手动分析函数的回调
+  onEditorReady?: (editor: any) => void;  // 新增：编辑器实例回调
 }
 
-const SOCKET_URL = "ws://localhost:8000/ws";
+// 使用增强版WebSocket端点（支持Function Calling）
+const SOCKET_URL = import.meta.env.VITE_USE_ENHANCED_WS === 'true' 
+  ? "ws://localhost:8000/ws/enhanced"
+  : "ws://localhost:8000/ws";
 
 export default function Document({ 
   onContentChange, 
   content, 
   onAISuggestions,
   onProcessingStatus,
-  onManualAnalysis
+  onManualAnalysis,
+  onEditorReady
 }: DocumentProps) {
   const [isAIProcessing, setIsAIProcessing] = useState(false);
-  const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");
+  // const [lastAnalyzedContent, setLastAnalyzedContent] = useState<string>("");  // 暂时注释，将来可能需要
+  const [isWebSocketReady, setIsWebSocketReady] = useState(false);
 
   const { sendMessage, lastMessage, readyState } = useWebSocket(SOCKET_URL, {
     onOpen: () => {
-      console.log("🔌 WebSocket Connected");
+      console.log("🔌 WebSocket Connected to:", SOCKET_URL);
+      setIsWebSocketReady(true);
       onProcessingStatus?.(false, "AI助手已连接");
     },
     onClose: () => {
       console.log("🔌 WebSocket Disconnected");
+      setIsWebSocketReady(false);
       onProcessingStatus?.(false, "AI助手已断开连接");
     },
     shouldReconnect: (_closeEvent) => true,
     // 配置重连策略
     reconnectAttempts: 5,
     reconnectInterval: 3000,
+    // 共享WebSocket连接，防止多个实例
+    share: true
   });
+
+  // 检查WebSocket是否可以发送消息（更宽松的检查）
+  const isSocketActuallyReady = useCallback(() => {
+    // 允许在CONNECTING状态也尝试发送，因为可能已经可用
+    return isWebSocketReady && (readyState === ReadyState.OPEN || readyState === ReadyState.CONNECTING);
+  }, [isWebSocketReady, readyState]);
 
   useEffect(() => {
     if (lastMessage !== null) {
@@ -115,7 +133,11 @@ export default function Document({
             
           case 'connection_success':
             console.log("✅ AI服务连接成功:", message.message);
-            onProcessingStatus?.(false, message.message || "AI服务已就绪");
+            // 稍微延迟一下确保WebSocket完全就绪
+            setTimeout(() => {
+              setIsWebSocketReady(true);
+              onProcessingStatus?.(false, message.message || "AI服务已就绪");
+            }, 500);
             break;
             
           default:
@@ -130,12 +152,31 @@ export default function Document({
 
   // 手动触发AI分析
   const triggerManualAnalysis = useCallback(() => {
-    // 检查WebSocket连接状态和处理状态
-    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-    if (readyState !== 1) {
-      console.warn("⚠️ WebSocket未连接，无法进行AI分析，状态:", readyState);
-      onProcessingStatus?.(false, "AI助手未连接");
-      return;
+    console.log("🔍 触发分析时的调试信息:", {
+      readyState,
+      isWebSocketReady,
+      ReadyStateEnum: ReadyState,
+      isReadyStateOpen: readyState === ReadyState.OPEN,
+      expectedOpenValue: 1,
+      actualReadyState: readyState,
+      socketURL: SOCKET_URL
+    });
+    
+    // 使用更宽松的连接检查
+    if (!isSocketActuallyReady()) {
+      if (readyState === ReadyState.CONNECTING) {
+        console.log("🔄 WebSocket连接中，但仍尝试发送");
+        onProcessingStatus?.(false, "WebSocket连接中，正在尝试...");
+        // 不return，继续尝试发送
+      } else if (readyState === ReadyState.CLOSED || readyState === ReadyState.CLOSING) {
+        console.warn("⚠️ WebSocket已断开，无法进行AI分析，状态:", readyState);
+        onProcessingStatus?.(false, "AI助手连接已断开，请刷新页面");
+        return;
+      } else {
+        console.warn("⚠️ WebSocket状态异常，状态:", readyState);
+        onProcessingStatus?.(false, "WebSocket状态异常，正在尝试...");
+        // 仍然尝试发送，可能会自动重连
+      }
     }
     
     if (isAIProcessing) {
@@ -151,16 +192,40 @@ export default function Document({
     }
     
     console.log("📤 手动触发AI分析，内容长度:", content.length);
-    setLastAnalyzedContent(content); // 记录已分析的内容
-    sendMessage(content);
-  }, [content, readyState, isAIProcessing, sendMessage, onProcessingStatus]);
+    // setLastAnalyzedContent(content); // 记录已分析的内容 - 暂时注释
+    
+    try {
+      // 先设置处理状态
+      onProcessingStatus?.(true, "正在发送分析请求...");
+      
+      sendMessage(content);
+      console.log("✅ AI分析请求已发送");
+      
+      // 发送成功后更新状态
+      onProcessingStatus?.(true, "AI正在分析文档...");
+      
+    } catch (error) {
+      console.error("❌ 发送AI分析请求失败:", error);
+      onProcessingStatus?.(false, `发送请求失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      
+      // 如果是WebSocket连接问题，提供重连建议
+      if (readyState !== ReadyState.OPEN) {
+        setTimeout(() => {
+          onProcessingStatus?.(false, "连接异常，请稍后重试或刷新页面");
+        }, 2000);
+      }
+    }
+  }, [content, isSocketActuallyReady, isAIProcessing, sendMessage, onProcessingStatus, readyState]);
 
   // 注册手动分析函数
   useEffect(() => {
     if (onManualAnalysis) {
+      console.log('📝 Document: 注册手动分析函数');
       onManualAnalysis(triggerManualAnalysis);
     }
-  }, [triggerManualAnalysis, onManualAnalysis]);
+    // 只在组件挂载时注册一次，不需要依赖 triggerManualAnalysis
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onManualAnalysis]);
 
   const handleEditorChange = (content: string) => {
     onContentChange(content);
@@ -188,7 +253,11 @@ export default function Document({
     <div className="w-full h-full flex flex-col">
       {/* 编辑器容器 - 使用flex-1和overflow-y-auto实现正确滚动 */}
       <div className="flex-1 overflow-y-auto p-4">
-        <Editor handleEditorChange={handleEditorChange} content={content} />
+        <Editor 
+          handleEditorChange={handleEditorChange} 
+          content={content} 
+          onEditorReady={onEditorReady}
+        />
       </div>
       
       {/* 调试信息 - 可选显示 */}

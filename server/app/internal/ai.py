@@ -10,10 +10,10 @@ from app.internal.prompt import PROMPT
 
 # Don't modify this file
 
-load_dotenv()
+load_dotenv(override=True)  # 强制覆盖环境变量
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4o"
 
 
 def get_ai(
@@ -47,6 +47,7 @@ class AI:
                 "severity": <high|medium|low>,
                 "paragraph": <paragraph_number>,
                 "description": <description_of_error>,
+                "text": <exact_original_text>,
                 "suggestion": <suggested_correction>
             }
             ...

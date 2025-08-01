@@ -1,4 +1,4 @@
-# You shouldn't need to read any of this.
+# Enhanced prompt with Function Calling support
 
 RULES = {
     "Structure": """
@@ -72,43 +72,99 @@ RULES_TEXT = "\n".join(
     [f"{name}: {description}\n" for name, description in RULES.items()]
 )
 
-PROMPT = f"""
+# Enhanced prompt for Function Calling
+ENHANCED_PROMPT = f"""
 Your job is to review the "Claims" section of a patent document. You must comment on its strength, and decide whether it passes a set of rules. 
-    If it does not pass a given rule, suggest a change that would make it pass.
+If it does not pass a given rule, suggest a change that would make it pass.
 
-    Here is a description of a patent claim:
+Here is a description of a patent claim:
 
-    A patent is a legal document that gives an inventor the right to exclude others from practicing an
-    invention.
+A patent is a legal document that gives an inventor the right to exclude others from practicing an
+invention.
 
-    The claims are the most important section of a patent. The claims define the scope of protection provided by the patent and are the legally operative part of a patent application. The claims must be clear and concise, must be supported by the detailed description, and must be written in a particular format. 
+The claims are the most important section of a patent. The claims define the scope of protection provided by the patent and are the legally operative part of a patent application. The claims must be clear and concise, must be supported by the detailed description, and must be written in a particular format. 
 
-    For example, below is a sample claim.
-    An apparatus, comprising:
-    - a pencil having an elongated structure with two ends and a center therebetween;
-    - an eraser attached to one end of the pencil; and
-    - a light attached to the center of the pencil.
+For example, below is a sample claim.
+An apparatus, comprising:
+- a pencil having an elongated structure with two ends and a center therebetween;
+- an eraser attached to one end of the pencil; and
+- a light attached to the center of the pencil.
 
-    Here are the rules you should check for: {RULES_TEXT}
+Here are the rules you should check for: {RULES_TEXT}
 
-    Respond in valid JSON format:
-    {{
-        "issues": [
-        {{
-            "type": "<error_type>",
-            "severity": "<high|medium|low>",
-            "paragraph": <paragraph_number>,
-            "description": "<description_of_error>",
-            "text": "<exact_original_text>",
-            "suggestion": "<suggested_correction>"
-        }}]
-    }}
+IMPORTANT: You MUST use the create_suggestion function to report ALL issues you find. Even if you find no issues, you should call create_suggestion with a positive feedback or suggest potential improvements.
 
-    IMPORTANT FORMATTING REQUIREMENTS:
-    - paragraph: The paragraph number (1-based index) where the issue occurs
-    - text: The EXACT text from the original document that has the issue (word-for-word match, including punctuation)
-    - suggestion: Your recommended correction for replacing the original text. Do not include explainations or additional text.
-    - Only return strict JSON output, no other text or explanation
-    - DO NOT unnecessarily report an issue if there is no error in the document
-    - If you receive an HTML document, you MUST return an error
+When you find issues, use the create_suggestion function to report them.
+For diagrams or flowcharts requested by the user, use the create_diagram function.
 """
+
+# Function tools definition for OpenAI
+FUNCTION_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_suggestion",
+            "description": "Create a document suggestion for patent claim issues",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "originalText": {
+                        "type": "string",
+                        "description": "The exact original text from the document that has the issue (word-for-word match)"
+                    },
+                    "replaceTo": {
+                        "type": "string", 
+                        "description": "The suggested replacement text to fix the issue"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "The type of issue: Structure, Punctuation, Antecedent Basis, Ambiguity, Broadening Dependent Claims, etc."
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "The severity level of the issue"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Detailed explanation of the issue and why it needs correction"
+                    },
+                    "paragraph": {
+                        "type": "integer",
+                        "description": "The paragraph number (1-based index) where the issue occurs"
+                    }
+                },
+                "required": ["originalText", "replaceTo", "type", "severity", "description", "paragraph"]
+            }
+        }
+    },
+    {
+        "type": "function", 
+        "function": {
+            "name": "create_diagram",
+            "description": "Generate a diagram using Mermaid syntax",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mermaid_syntax": {
+                        "type": "string",
+                        "description": "The Mermaid diagram syntax code"
+                    },
+                    "diagram_type": {
+                        "type": "string",
+                        "enum": ["flowchart", "sequence", "class", "er", "gantt", "pie", "mindmap"],
+                        "description": "The type of diagram to create"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "The title or description of the diagram"
+                    }
+                },
+                "required": ["mermaid_syntax", "diagram_type"]
+            }
+        }
+    }
+]
+
+# For backward compatibility
+PROMPT = ENHANCED_PROMPT
