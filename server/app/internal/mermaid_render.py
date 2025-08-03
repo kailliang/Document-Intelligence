@@ -357,8 +357,9 @@ class MermaidRenderer:
                         
                         # Create SVG text element to replace foreignObject
                         text_element = soup.new_tag('text')
-                        text_element['x'] = x
-                        text_element['y'] = str(float(y) + float(height) * 0.7)  # Adjust baseline
+                        # Center the text horizontally and vertically within the foreignObject bounds
+                        text_element['x'] = str(float(x) + float(width) / 2)  # Center horizontally
+                        text_element['y'] = str(float(y) + float(height) / 2)  # Center vertically
                         text_element['text-anchor'] = 'middle'
                         text_element['dominant-baseline'] = 'middle'
                         text_element['font-family'] = 'Arial, sans-serif'
@@ -427,6 +428,25 @@ class MermaidRenderer:
                         text_elem['font-family'] = 'Arial, sans-serif'
                     if not text_elem.get('font-size'):
                         text_elem['font-size'] = '14px'
+                    
+                    # Ensure proper text centering for node labels
+                    # Check if this text is inside a node label
+                    node_label = text_elem.find_parent('g', class_='label')
+                    if node_label and node_label.find_parent('g', class_='node'):
+                        # This is a node label text - ensure it's centered
+                        if not text_elem.get('text-anchor'):
+                            text_elem['text-anchor'] = 'middle'
+                        if not text_elem.get('dominant-baseline'):
+                            text_elem['dominant-baseline'] = 'middle'
+                        logger.info(f"📐 Applied centering to node label: '{text_elem.get_text()[:20]}...'")
+                    
+                    # Also check tspan elements within text for centering
+                    tspans = text_elem.find_all('tspan')
+                    for tspan in tspans:
+                        if not tspan.get('text-anchor') and text_elem.get('text-anchor'):
+                            tspan['text-anchor'] = text_elem.get('text-anchor')
+                        if tspan.get('x') is None:
+                            tspan['x'] = '0'  # Center relative to parent text element
             
             # Find all arrow markers and ensure they're visible
             markers = soup.find_all('path', class_='arrowMarkerPath')
