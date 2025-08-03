@@ -177,7 +177,7 @@ export default function Document({
     }
     
     if (isAIProcessing) {
-      onProcessingStatus?.(false, "AI is processing, please wait...");
+      onProcessingStatus?.(false, "AI is analysing, please wait...");
       return;
     }
     

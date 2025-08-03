@@ -67,7 +67,7 @@ async def websocket_enhanced_endpoint(websocket: WebSocket):
             # Notify frontend processing started
             processing_msg = {
                 "type": "processing_start",
-                "message": "Analyzing document...",
+                "message": "Analysing document...",
                 "timestamp": datetime.utcnow().isoformat()
             }
             await websocket.send_text(json.dumps(processing_msg))
