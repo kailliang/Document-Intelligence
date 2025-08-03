@@ -1,7 +1,7 @@
 """
-简化PDF导出器
+Simplified PDF Exporter
 
-使用Playwright直接将HTML转换为PDF，避免复杂的系统依赖。
+Uses Playwright to convert HTML directly to PDF, avoiding complex system dependencies.
 """
 
 import logging
@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class SimplePDFExporter:
-    """简化PDF导出器类"""
+    """Simplified PDF exporter class"""
     
     def __init__(self):
-        # 确保导出目录存在
+        # Ensure export directory exists
         self.export_dir = Path("app/static/exports")
         self.export_dir.mkdir(parents=True, exist_ok=True)
         
-        # PDF样式配置
+        # PDF styling configuration
         self.pdf_css = """
         @page {
             size: A4;
@@ -113,7 +113,7 @@ class SimplePDFExporter:
             }
         }
         
-        /* 确保列表正确显示 */
+        /* Ensure lists display correctly */
         ul, ol {
             margin: 10px 0;
             padding-left: 20px;
@@ -123,7 +123,7 @@ class SimplePDFExporter:
             margin-bottom: 5px;
         }
         
-        /* 表格样式 */
+        /* Table styling */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -141,7 +141,7 @@ class SimplePDFExporter:
             font-weight: bold;
         }
         
-        /* 代码块样式 */
+        /* Code block styling */
         pre, code {
             font-family: 'Courier New', monospace;
             background-color: #f8f8f8;
@@ -162,43 +162,43 @@ class SimplePDFExporter:
     
     async def export_document(self, document: Document, version: DocumentVersion) -> str:
         """
-        导出文档版本为PDF
+        Export document version to PDF
         
         Args:
-            document: 文档对象
-            version: 文档版本对象
+            document: Document object
+            version: Document version object
             
         Returns:
-            生成的PDF文件名
+            Generated PDF filename
         """
         try:
-            logger.info(f"开始导出文档: {document.title} v{version.version_number}")
+            logger.info(f"Beginning document export: {document.title} v{version.version_number}")
             
-            # 1. 处理Mermaid图表
-            logger.info("处理Mermaid图表...")
+            # 1. Process Mermaid diagrams
+            logger.info("Processing Mermaid diagrams...")
             from app.internal.mermaid_render import MermaidRenderer
             mermaid_renderer = MermaidRenderer()
             processed_html = await mermaid_renderer.process_html(version.content)
             
-            # 2. 清理HTML内容
-            logger.info("预处理HTML内容...")
+            # 2. Clean HTML content
+            logger.info("Preprocessing HTML content...")
             cleaned_html = self._clean_html_content(processed_html)
             
-            # 2. 应用PDF样式
-            logger.info("应用PDF样式...")
+            # 3. Apply PDF styling
+            logger.info("Applying PDF styling...")
             styled_html = self._create_pdf_html(cleaned_html, document.title, version.version_number)
             
-            # 3. 生成PDF文件名
+            # 4. Generate PDF filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_title = self._safe_filename(document.title)
             filename = f"{safe_title}_v{version.version_number}_{timestamp}.pdf"
             file_path = self.export_dir / filename
             
-            # 4. 使用Playwright生成PDF
-            logger.info(f"生成PDF文件: {filename}")
+            # 5. Generate PDF using Playwright
+            logger.info(f"Generating PDF file: {filename}")
             await self._generate_pdf_with_playwright(styled_html, file_path)
             
-            logger.info(f"PDF导出成功: {filename}")
+            logger.info(f"PDF export successful: {filename}")
             return filename
             
         except Exception as e:
@@ -207,46 +207,46 @@ class SimplePDFExporter:
     
     def _clean_html_content(self, html_content: str) -> str:
         """
-        清理HTML内容，移除不必要的属性和样式
+        Clean HTML content, removing unnecessary attributes and styles
         
         Args:
-            html_content: 原始HTML内容
+            html_content: Original HTML content
             
         Returns:
-            清理后的HTML内容
+            Cleaned HTML content
         """
         try:
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # 移除TipTap特有的属性，但保留Mermaid相关的data属性
+            # Remove TipTap-specific attributes but preserve Mermaid-related data attributes
             for elem in soup.find_all():
-                # 移除data-*属性，但保留Mermaid相关的data属性
+                # Remove data-* attributes but preserve Mermaid-related data attributes
                 attrs_to_remove = []
                 for attr in elem.attrs.keys():
                     if attr.startswith('data-'):
-                        # 保留Mermaid相关的data属性
+                        # Preserve Mermaid-related data attributes
                         if attr not in ['data-syntax', 'data-title', 'data-type']:
                             attrs_to_remove.append(attr)
                         elif attr == 'data-type' and elem.attrs[attr] != 'mermaid-diagram':
-                            # 只保留data-type="mermaid-diagram"
+                            # Only preserve data-type="mermaid-diagram"
                             attrs_to_remove.append(attr)
                 
                 for attr in attrs_to_remove:
                     del elem.attrs[attr]
                 
-                # 移除contenteditable属性
+                # Remove contenteditable attribute
                 if 'contenteditable' in elem.attrs:
                     del elem.attrs['contenteditable']
                 
-                # 移除spellcheck属性  
+                # Remove spellcheck attribute  
                 if 'spellcheck' in elem.attrs:
                     del elem.attrs['spellcheck']
                 
-                # 清理class属性，只保留必要的
+                # Clean class attributes, keeping only necessary ones
                 if 'class' in elem.attrs:
                     classes = elem.attrs['class']
                     if isinstance(classes, list):
-                        # 保留有用的class
+                        # Keep useful classes
                         useful_classes = [cls for cls in classes if cls in ['mermaid-container', 'mermaid-title', 'mermaid-diagram']]
                         if useful_classes:
                             elem.attrs['class'] = useful_classes
@@ -256,27 +256,27 @@ class SimplePDFExporter:
             return str(soup)
             
         except Exception as e:
-            logger.warning(f"HTML清理失败，使用原始内容: {str(e)}")
+            logger.warning(f"HTML cleaning failed, using original content: {str(e)}")
             return html_content
     
     def _create_pdf_html(self, content: str, title: str, version_number: int) -> str:
         """
-        创建用于PDF生成的完整HTML文档
+        Create complete HTML document for PDF generation
         
         Args:
-            content: 文档内容HTML
-            title: 文档标题
-            version_number: 版本号
+            content: Document content HTML
+            title: Document title
+            version_number: Version number
             
         Returns:
-            完整的HTML文档
+            Complete HTML document
         """
-        # 提取body内容
+        # Extract body content
         soup = BeautifulSoup(content, 'html.parser')
         body_content = soup.find('body')
         if body_content:
             content_html = str(body_content)
-            # 移除<body>标签，只保留内容
+            # Remove <body> tags, keeping only content
             content_html = content_html.replace('<body>', '').replace('</body>', '')
         else:
             content_html = content
@@ -309,24 +309,24 @@ class SimplePDFExporter:
     
     async def _generate_pdf_with_playwright(self, html_content: str, output_path: Path) -> None:
         """
-        使用Playwright生成PDF文件
+        Generate PDF file using Playwright
         
         Args:
-            html_content: HTML内容
-            output_path: 输出文件路径
+            html_content: HTML content
+            output_path: Output file path
         """
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
                 
-                # 设置页面内容
+                # Set page content
                 await page.set_content(html_content, wait_until='networkidle')
                 
-                # 等待页面渲染完成
+                # Wait for page rendering to complete
                 await page.wait_for_timeout(2000)
                 
-                # 生成PDF
+                # Generate PDF
                 await page.pdf(
                     path=str(output_path),
                     format='A4',
@@ -343,32 +343,32 @@ class SimplePDFExporter:
                 )
                 
                 await browser.close()
-                logger.info(f"PDF文件生成成功: {output_path}")
+                logger.info(f"PDF file generated successfully: {output_path}")
                 
         except Exception as e:
-            logger.error(f"PDF生成失败: {str(e)}")
-            raise Exception(f"PDF生成失败: {str(e)}")
+            logger.error(f"PDF generation failed: {str(e)}")
+            raise Exception(f"PDF generation failed: {str(e)}")
     
     def _safe_filename(self, filename: str) -> str:
         """
-        生成安全的文件名
+        Generate safe filename
         
         Args:
-            filename: 原始文件名
+            filename: Original filename
             
         Returns:
-            安全的文件名
+            Safe filename
         """
-        # 移除或替换不安全的字符
+        # Remove or replace unsafe characters
         import re
         safe_name = re.sub(r'[<>:"/\\|?*]', '_', filename)
         safe_name = safe_name.strip()
         
-        # 限制长度
+        # Limit length
         if len(safe_name) > 50:
             safe_name = safe_name[:50]
         
-        # 如果为空，使用默认名称
+        # If empty, use default name
         if not safe_name:
             safe_name = "document"
         
@@ -376,25 +376,25 @@ class SimplePDFExporter:
     
     def get_file_path(self, filename: str) -> Path:
         """
-        获取文件的完整路径
+        Get complete file path
         
         Args:
-            filename: 文件名
+            filename: Filename
             
         Returns:
-            文件完整路径
+            Complete file path
         """
         return self.export_dir / filename
     
     async def cleanup_old_files(self, max_age_hours: int = 24) -> int:
         """
-        清理旧的PDF文件
+        Clean up old PDF files
         
         Args:
-            max_age_hours: 最大保留时间（小时）
+            max_age_hours: Maximum retention time (hours)
             
         Returns:
-            清理的文件数量
+            Number of files cleaned
         """
         try:
             import time
@@ -408,11 +408,11 @@ class SimplePDFExporter:
                     if file_age > max_age_seconds:
                         file_path.unlink()
                         cleaned_count += 1
-                        logger.info(f"清理旧文件: {file_path.name}")
+                        logger.info(f"Cleaning old file: {file_path.name}")
             
-            logger.info(f"清理完成，共清理 {cleaned_count} 个文件")
+            logger.info(f"Cleanup completed, cleaned {cleaned_count} files")
             return cleaned_count
             
         except Exception as e:
-            logger.error(f"清理文件失败: {str(e)}")
+            logger.error(f"File cleanup failed: {str(e)}")
             return 0
