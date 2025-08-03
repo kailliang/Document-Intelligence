@@ -196,8 +196,8 @@ class PDFExporter:
             return filename
             
         except Exception as e:
-            logger.error(f"PDF导出失败: {str(e)}")
-            raise Exception(f"PDF导出失败: {str(e)}")
+            logger.error(f"PDF export failed: {str(e)}")
+            raise Exception(f"PDF export failed: {str(e)}")
     
     def _clean_html_content(self, html_content: str) -> str:
         """
@@ -280,7 +280,7 @@ class PDFExporter:
         
         return f"""
         <!DOCTYPE html>
-        <html lang="zh-CN">
+        <html lang="en">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -293,7 +293,7 @@ class PDFExporter:
             <header class="document-header">
                 <h1>{title}</h1>
                 <div class="version-info" style="text-align: center; color: #666; font-size: 10pt; margin-bottom: 30px;">
-                    版本: v{version_number} | 导出时间: {datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")}
+                    Version: v{version_number} | Exported: {datetime.now().strftime("%B %d, %Y at %H:%M:%S")}
                 </div>
             </header>
             
