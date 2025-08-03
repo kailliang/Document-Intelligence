@@ -234,8 +234,10 @@ class MermaidRenderer:
                         clean_svg = self._remove_css_animations(svg_outer)
                         # Remove foreignObject elements that cause PDF issues
                         pdf_compatible_svg = self._remove_foreign_objects(clean_svg)
+                        # Apply explicit styling for PDF compatibility
+                        styled_svg = self._apply_explicit_styling(pdf_compatible_svg)
                         # Ensure proper ViewBox for scaling
-                        improved_svg = self._improve_svg_scaling(pdf_compatible_svg)
+                        improved_svg = self._improve_svg_scaling(styled_svg)
                         await browser.close()
                         return improved_svg
                     else:
@@ -246,7 +248,8 @@ class MermaidRenderer:
                         complete_svg = f'<svg {svg_attrs}>{svg_content}</svg>'
                         clean_svg = self._remove_css_animations(complete_svg)
                         pdf_compatible_svg = self._remove_foreign_objects(clean_svg)
-                        improved_svg = self._improve_svg_scaling(pdf_compatible_svg)
+                        styled_svg = self._apply_explicit_styling(pdf_compatible_svg)
+                        improved_svg = self._improve_svg_scaling(styled_svg)
                         await browser.close()
                         return improved_svg
                 else:
@@ -379,6 +382,82 @@ class MermaidRenderer:
             
         except Exception as e:
             logger.warning(f"foreignObject removal failed: {e}")
+            return svg_content
+    
+    def _apply_explicit_styling(self, svg_content: str) -> str:
+        """
+        应用明确的样式属性到SVG元素，确保PDF正确渲染
+        
+        Args:
+            svg_content: SVG内容
+            
+        Returns:
+            应用明确样式后的SVG内容
+        """
+        from bs4 import BeautifulSoup
+        
+        try:
+            soup = BeautifulSoup(svg_content, 'html.parser')
+            
+            # Find all rect elements in nodes (boxes)
+            node_rects = soup.select('g.node rect.basic')
+            
+            if node_rects:
+                logger.info(f"🎨 Applying explicit styling to {len(node_rects)} node rectangles")
+                
+                for rect in node_rects:
+                    # Apply explicit fill and stroke for node boxes
+                    rect['fill'] = '#ECECFF'  # Light blue background
+                    rect['stroke'] = '#9370DB'  # Purple border
+                    rect['stroke-width'] = '1px'
+                    
+                    logger.info(f"✅ Applied styling to rect: fill={rect.get('fill')}, stroke={rect.get('stroke')}")
+            
+            # Find all text elements and ensure they have proper styling
+            text_elements = soup.find_all('text')
+            
+            if text_elements:
+                logger.info(f"📝 Ensuring proper text styling for {len(text_elements)} text elements")
+                
+                for text_elem in text_elements:
+                    # Ensure text has proper color and font
+                    if not text_elem.get('fill'):
+                        text_elem['fill'] = '#333333'  # Dark gray text
+                    if not text_elem.get('font-family'):
+                        text_elem['font-family'] = 'Arial, sans-serif'
+                    if not text_elem.get('font-size'):
+                        text_elem['font-size'] = '14px'
+            
+            # Find all arrow markers and ensure they're visible
+            markers = soup.find_all('path', class_='arrowMarkerPath')
+            
+            if markers:
+                logger.info(f"➤ Ensuring arrow visibility for {len(markers)} markers")
+                
+                for marker in markers:
+                    if not marker.get('fill'):
+                        marker['fill'] = '#000000'
+                    if not marker.get('stroke'):
+                        marker['stroke'] = '#000000'
+            
+            # Find all edge paths and ensure they're visible
+            edges = soup.find_all('path', class_='flowchart-link')
+            
+            if edges:
+                logger.info(f"↔ Ensuring edge visibility for {len(edges)} edges")
+                
+                for edge in edges:
+                    if not edge.get('stroke'):
+                        edge['stroke'] = '#000000'
+                    if not edge.get('stroke-width'):
+                        edge['stroke-width'] = '2px'
+                    edge['fill'] = 'none'  # Ensure edges are not filled
+            
+            logger.info("✅ Explicit styling application completed")
+            return str(soup)
+            
+        except Exception as e:
+            logger.warning(f"Explicit styling application failed: {e}")
             return svg_content
     
     def _improve_svg_scaling(self, svg_content: str) -> str:
