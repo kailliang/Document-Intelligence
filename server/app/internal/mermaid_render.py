@@ -169,13 +169,15 @@ class MermaidRenderer:
                         .mermaid {{ 
                             text-align: center;
                             background: white;
-                            max-width: 100%;
+                            width: 100%;
+                            overflow: visible;
                         }}
                         svg {{
-                            max-width: 100% !important;
-                            width: 100% !important;
+                            max-width: none !important;
+                            width: auto !important;
                             height: auto !important;
-                            min-width: 400px !important;
+                            display: block !important;
+                            margin: 0 auto !important;
                         }}
                     </style>
                 </head>
@@ -192,9 +194,10 @@ class MermaidRenderer:
                             flowchart: {{
                                 htmlLabels: false,
                                 curve: 'basis',
-                                useMaxWidth: true,
-                                nodeSpacing: 50,
-                                rankSpacing: 50
+                                useMaxWidth: false,
+                                nodeSpacing: 30,
+                                rankSpacing: 40,
+                                padding: 10
                             }},
                             themeVariables: {{
                                 fontSize: '14px',
@@ -224,8 +227,10 @@ class MermaidRenderer:
                     if svg_outer:
                         # Remove CSS animations that break PDF rendering
                         clean_svg = self._remove_css_animations(svg_outer)
+                        # Ensure proper ViewBox for scaling
+                        improved_svg = self._improve_svg_scaling(clean_svg)
                         await browser.close()
-                        return clean_svg
+                        return improved_svg
                     else:
                         # Fallback: construct SVG from innerHTML and attributes
                         svg_content = await svg_element.inner_html()
@@ -233,8 +238,9 @@ class MermaidRenderer:
                         
                         complete_svg = f'<svg {svg_attrs}>{svg_content}</svg>'
                         clean_svg = self._remove_css_animations(complete_svg)
+                        improved_svg = self._improve_svg_scaling(clean_svg)
                         await browser.close()
-                        return clean_svg
+                        return improved_svg
                 else:
                     logger.error("未找到渲染后的SVG元素")
                     await browser.close()
@@ -260,9 +266,9 @@ class MermaidRenderer:
             title_html = f'<div class="mermaid-title" style="text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 14px;">{title}</div>'
         
         return f'''
-        <div class="mermaid-container" style="text-align: center; margin: 20px 0; page-break-inside: avoid;">
+        <div class="mermaid-container" style="text-align: center; margin: 20px 0; page-break-inside: avoid; width: 100%; overflow: visible;">
             {title_html}
-            <div class="mermaid-diagram" style="display: inline-block;">
+            <div class="mermaid-diagram" style="display: block; width: 100%; overflow: visible; text-align: center;">
                 {svg_content}
             </div>
         </div>
@@ -303,4 +309,84 @@ class MermaidRenderer:
         svg_content = re.sub(r'style\s*=\s*"[^"]*;"', lambda m: m.group(0).replace(';;', ';'), svg_content)
         
         logger.info("✅ 已移除SVG中的CSS动画和相关属性")
+        return svg_content
+    
+    def _improve_svg_scaling(self, svg_content: str) -> str:
+        """
+        改进SVG的缩放支持，确保在PDF中正确显示
+        
+        Args:
+            svg_content: SVG内容
+            
+        Returns:
+            改进后的SVG内容
+        """
+        import re
+        from bs4 import BeautifulSoup
+        
+        try:
+            soup = BeautifulSoup(svg_content, 'xml')
+            svg_element = soup.find('svg')
+            
+            if svg_element:
+                width = svg_element.get('width')
+                height = svg_element.get('height')
+                viewbox = svg_element.get('viewBox')
+                
+                # Convert width/height to numbers if they exist
+                width_num = None
+                height_num = None
+                
+                if width:
+                    # Extract numeric value (remove px, %, etc.)
+                    width_match = re.search(r'([\d.]+)', str(width))
+                    if width_match:
+                        width_num = float(width_match.group(1))
+                        
+                if height:
+                    height_match = re.search(r'([\d.]+)', str(height))
+                    if height_match:
+                        height_num = float(height_match.group(1))
+                
+                # If no viewBox but we have width and height, create one
+                if not viewbox and width_num and height_num:
+                    viewbox = f"0 0 {width_num} {height_num}"
+                    svg_element['viewBox'] = viewbox
+                    logger.info(f"📐 Added viewBox: {viewbox}")
+                
+                # Ensure proper attributes for PDF scaling
+                svg_element['preserveAspectRatio'] = 'xMidYMid meet'
+                
+                # Remove fixed width/height to allow responsive scaling
+                if svg_element.get('width'):
+                    del svg_element['width']
+                if svg_element.get('height'):
+                    del svg_element['height']
+                
+                # Add CSS for proper scaling
+                style_tag = soup.find('style')
+                if not style_tag:
+                    style_tag = soup.new_tag('style')
+                    svg_element.insert(0, style_tag)
+                
+                # Ensure style content exists
+                current_style = style_tag.string or ""
+                scaling_css = """
+                svg { 
+                    width: 100%; 
+                    height: auto; 
+                    max-width: 100%; 
+                    display: block; 
+                }
+                """
+                
+                if scaling_css not in current_style:
+                    style_tag.string = current_style + scaling_css
+                
+                logger.info("✅ SVG scaling improvements applied")
+                return str(soup)
+            
+        except Exception as e:
+            logger.warning(f"SVG scaling improvement failed: {e}")
+        
         return svg_content
