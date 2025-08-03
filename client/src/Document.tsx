@@ -95,7 +95,7 @@ export default function Document({
           case 'processing_start':
             console.log("🤖 AI started processing document");
             setIsAIProcessing(true);
-            onProcessingStatus?.(true, message.message || "AI is analyzing document...");
+            onProcessingStatus?.(true, message.message || "AI is analysing document...");
             break;
             
           case 'ai_suggestions':
@@ -190,7 +190,7 @@ export default function Document({
     try {
       onProcessingStatus?.(true, "Sending analysis request...");
       sendMessage(currentContent);
-      onProcessingStatus?.(true, "AI is analyzing document...");
+      onProcessingStatus?.(true, "AI is analysing document...");
       
     } catch (error) {
       console.error("❌ Failed to send AI analysis request:", error);
