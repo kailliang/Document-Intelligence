@@ -1,7 +1,7 @@
 """
-Mermaid图表渲染器
+Mermaid Diagram Renderer
 
-负责将HTML中的Mermaid代码块渲染为高质量的SVG图片，用于PDF导出。
+Responsible for rendering Mermaid code blocks within HTML into high-quality SVG images for PDF export.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class MermaidRenderer:
-    """Mermaid图表渲染器类"""
+    """Mermaid diagram renderer class"""
     
     def __init__(self):
         self.mermaid_config = {
@@ -28,94 +28,94 @@ class MermaidRenderer:
     
     async def process_html(self, html_content: str) -> str:
         """
-        处理HTML内容，将其中的Mermaid节点渲染为SVG
+        Process HTML content, rendering Mermaid nodes within it as SVG
         
         Args:
-            html_content: 包含Mermaid节点的HTML内容
+            html_content: HTML content containing Mermaid nodes
             
         Returns:
-            处理后的HTML内容，Mermaid代码已替换为SVG
+            Processed HTML content with Mermaid code replaced by SVG
         """
         try:
-            logger.info("开始处理Mermaid图表...")
+            logger.info("Beginning Mermaid diagram processing...")
             
-            # 解析HTML
+            # Parse HTML
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # 查找所有的mermaid-node元素
+            # Find all mermaid-node elements
             mermaid_nodes = soup.find_all(['mermaid-node', 'div'], class_='mermaid-node')
             
-            # 额外调试：查找所有包含data-type="mermaid-diagram"的元素
+            # Additional debugging: find all elements containing data-type="mermaid-diagram"
             mermaid_diagrams = soup.find_all(['div'], attrs={'data-type': 'mermaid-diagram'})
             logger.info(f"🔍 Found {len(mermaid_diagrams)} elements with data-type='mermaid-diagram'")
             
-            # 合并两种查找方式的结果
+            # Merge results from both search methods
             all_mermaid_elements = list(set(mermaid_nodes + mermaid_diagrams))
             
             if not all_mermaid_elements:
-                logger.info("❌ 未找到Mermaid节点，直接返回原始HTML")
+                logger.info("❌ No Mermaid nodes found, returning original HTML")
                 logger.info(f"🔍 HTML preview: {html_content[:500]}...")
                 logger.info(f"🔍 Searching for mermaid-node class: {html_content.count('mermaid-node')}")
                 search_term = 'data-type="mermaid-diagram"'
                 logger.info(f"🔍 Searching for data-type=mermaid-diagram: {html_content.count(search_term)}")
                 return html_content
             
-            logger.info(f"✅ 找到 {len(all_mermaid_elements)} 个Mermaid节点")
+            logger.info(f"✅ Found {len(all_mermaid_elements)} Mermaid nodes")
             
-            # 渲染每个Mermaid节点
+            # Render each Mermaid node
             for i, node in enumerate(all_mermaid_elements):
                 try:
-                    # 提取Mermaid语法和标题
+                    # Extract Mermaid syntax and title
                     syntax = self._extract_mermaid_syntax(node)
                     title = self._extract_mermaid_title(node)
                     
                     if syntax:
-                        logger.info(f"渲染第 {i+1} 个Mermaid图表...")
+                        logger.info(f"Rendering Mermaid diagram {i+1}...")
                         logger.info(f"📊 Using syntax: {syntax[:100]}...")
                         svg_content = await self._render_mermaid_to_svg(syntax)
                         
                         if svg_content:
-                            # 创建新的SVG容器
+                            # Create new SVG container
                             svg_container = self._create_svg_container(svg_content, title)
                             node.replace_with(BeautifulSoup(svg_container, 'html.parser'))
-                            logger.info(f"第 {i+1} 个Mermaid图表渲染成功 - SVG length: {len(svg_content)}")
+                            logger.info(f"Mermaid diagram {i+1} rendered successfully - SVG length: {len(svg_content)}")
                         else:
-                            logger.warning(f"第 {i+1} 个Mermaid图表渲染失败，保留原始内容")
+                            logger.warning(f"Mermaid diagram {i+1} rendering failed, keeping original content")
                     else:
-                        logger.warning(f"第 {i+1} 个Mermaid节点未找到语法内容")
+                        logger.warning(f"Mermaid node {i+1} has no syntax content found")
                         logger.warning(f"📋 Node details: tag={node.name}, attrs={node.attrs}")
                         
                 except Exception as e:
-                    logger.error(f"处理第 {i+1} 个Mermaid节点时出错: {str(e)}")
+                    logger.error(f"Error processing Mermaid node {i+1}: {str(e)}")
                     continue
             
             result_html = str(soup)
-            logger.info("Mermaid图表处理完成")
+            logger.info("Mermaid diagram processing completed")
             return result_html
             
         except Exception as e:
-            logger.error(f"处理Mermaid图表时出错: {str(e)}")
-            return html_content  # 出错时返回原始内容
+            logger.error(f"Error processing Mermaid diagrams: {str(e)}")
+            return html_content  # Return original content on error
     
     def _extract_mermaid_syntax(self, node) -> str:
-        """从节点中提取Mermaid语法"""
+        """Extract Mermaid syntax from node"""
         logger.info(f"🔍 Extracting mermaid syntax from node: {node.name if hasattr(node, 'name') else 'unknown'}")
         logger.info(f"🔍 Node attributes: {node.attrs if hasattr(node, 'attrs') else 'none'}")
         
-        # 尝试从属性中获取
+        # Try to extract from attributes
         syntax = node.get('syntax') or node.get('data-syntax')
         
         if syntax:
             logger.info(f"✅ Found syntax in attributes: {syntax[:50]}...")
             return syntax
         
-        # 尝试从子元素中查找
+        # Try to find in child elements
         syntax_elem = node.find(['pre', 'code'], class_='mermaid-syntax')
         if syntax_elem:
             logger.info(f"✅ Found syntax in child element: {syntax_elem.get_text()[:50]}...")
             return syntax_elem.get_text().strip()
         
-        # 尝试从文本内容中提取
+        # Try to extract from text content
         text_content = node.get_text().strip()
         logger.info(f"🔍 Node text content: {text_content[:100]}...")
         
@@ -125,14 +125,14 @@ class MermaidRenderer:
         return ""
     
     def _extract_mermaid_title(self, node) -> str:
-        """从节点中提取Mermaid标题"""
-        # 尝试从属性中获取
+        """Extract Mermaid title from node"""
+        # Try to extract from attributes
         title = node.get('title') or node.get('data-title')
         
         if title:
             return title
         
-        # 尝试从子元素中查找
+        # Try to find in child elements
         title_elem = node.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'], class_='mermaid-title')
         if title_elem:
             return title_elem.get_text().strip()
@@ -141,20 +141,20 @@ class MermaidRenderer:
     
     async def _render_mermaid_to_svg(self, mermaid_syntax: str) -> str:
         """
-        使用Playwright渲染Mermaid语法为SVG
+        Render Mermaid syntax to SVG using Playwright
         
         Args:
-            mermaid_syntax: Mermaid语法字符串
+            mermaid_syntax: Mermaid syntax string
             
         Returns:
-            渲染后的SVG字符串
+            Rendered SVG string
         """
         try:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
                 
-                # 创建包含Mermaid的HTML页面
+                # Create HTML page containing Mermaid
                 html_template = f"""
                 <!DOCTYPE html>
                 <html>
@@ -220,10 +220,10 @@ class MermaidRenderer:
                 
                 await page.set_content(html_template)
                 
-                # 等待Mermaid渲染完成
+                # Wait for Mermaid rendering to complete
                 await page.wait_for_timeout(2000)
                 
-                # 获取渲染后的SVG
+                # Get rendered SVG
                 svg_element = await page.query_selector('svg')
                 if svg_element:
                     # Get the complete SVG element including opening/closing tags
@@ -253,24 +253,24 @@ class MermaidRenderer:
                         await browser.close()
                         return improved_svg
                 else:
-                    logger.error("未找到渲染后的SVG元素")
+                    logger.error("No rendered SVG element found")
                     await browser.close()
                     return ""
                     
         except Exception as e:
-            logger.error(f"Mermaid渲染失败: {str(e)}")
+            logger.error(f"Mermaid rendering failed: {str(e)}")
             return ""
     
     def _create_svg_container(self, svg_content: str, title: str = "") -> str:
         """
-        创建SVG容器HTML
+        Create SVG container HTML
         
         Args:
-            svg_content: SVG内容
-            title: 图表标题
+            svg_content: SVG content
+            title: Diagram title
             
         Returns:
-            包装后的HTML容器
+            Wrapped HTML container
         """
         title_html = ""
         if title:
@@ -287,50 +287,50 @@ class MermaidRenderer:
     
     def _remove_css_animations(self, svg_content: str) -> str:
         """
-        移除SVG中的CSS动画，解决PDF渲染问题
+        Remove CSS animations from SVG to resolve PDF rendering issues
         
         Args:
-            svg_content: 包含动画的SVG内容
+            svg_content: SVG content containing animations
             
         Returns:
-            移除动画后的SVG内容
+            SVG content with animations removed
         """
         import re
         
-        # 移除 @keyframes 动画定义 (更全面的模式)
+        # Remove @keyframes animation definitions (comprehensive pattern)
         svg_content = re.sub(r'@keyframes[^}]*\{[^}]*\}', '', svg_content, flags=re.DOTALL)
         svg_content = re.sub(r'@-webkit-keyframes[^}]*\{[^}]*\}', '', svg_content, flags=re.DOTALL)
         
-        # 移除所有animation相关的CSS属性
+        # Remove all animation-related CSS properties
         svg_content = re.sub(r'animation[^;:]*:[^;]*;', '', svg_content)
         svg_content = re.sub(r'animation[^;:]*\s*:[^;]*;', '', svg_content)
         svg_content = re.sub(r'-webkit-animation[^;:]*:[^;]*;', '', svg_content)
         
-        # 移除 transition 属性
+        # Remove transition properties
         svg_content = re.sub(r'transition[^;:]*:[^;]*;', '', svg_content)
         svg_content = re.sub(r'-webkit-transition[^;:]*:[^;]*;', '', svg_content)
         
-        # 移除stroke-dasharray和stroke-dashoffset相关的动画属性
+        # Remove stroke-dasharray and stroke-dashoffset animation properties
         svg_content = re.sub(r'stroke-dasharray[^;:]*:[^;]*;', '', svg_content)
         svg_content = re.sub(r'stroke-dashoffset[^;:]*:[^;]*;', '', svg_content)
         
-        # 清理多余的空白和分号
+        # Clean up excess whitespace and semicolons
         svg_content = re.sub(r'\s+', ' ', svg_content)
         svg_content = re.sub(r';\s*;', ';', svg_content)
         svg_content = re.sub(r'style\s*=\s*"[^"]*;"', lambda m: m.group(0).replace(';;', ';'), svg_content)
         
-        logger.info("✅ 已移除SVG中的CSS动画和相关属性")
+        logger.info("✅ Removed CSS animations and related properties from SVG")
         return svg_content
     
     def _remove_foreign_objects(self, svg_content: str) -> str:
         """
-        移除SVG中的foreignObject元素，解决PDF渲染文字显示问题
+        Remove foreignObject elements from SVG to resolve PDF text rendering issues
         
         Args:
-            svg_content: 包含foreignObject的SVG内容
+            svg_content: SVG content containing foreignObject elements
             
         Returns:
-            移除foreignObject后的SVG内容
+            SVG content with foreignObject elements removed
         """
         import re
         from bs4 import BeautifulSoup
@@ -387,13 +387,13 @@ class MermaidRenderer:
     
     def _apply_explicit_styling(self, svg_content: str) -> str:
         """
-        应用明确的样式属性到SVG元素，确保PDF正确渲染
+        Apply explicit style attributes to SVG elements to ensure proper PDF rendering
         
         Args:
-            svg_content: SVG内容
+            svg_content: SVG content
             
         Returns:
-            应用明确样式后的SVG内容
+            SVG content with explicit styling applied
         """
         from bs4 import BeautifulSoup
         
@@ -483,13 +483,13 @@ class MermaidRenderer:
     
     def _improve_svg_scaling(self, svg_content: str) -> str:
         """
-        改进SVG的缩放支持，确保在PDF中正确显示
+        Improve SVG scaling support to ensure proper display in PDF
         
         Args:
-            svg_content: SVG内容
+            svg_content: SVG content
             
         Returns:
-            改进后的SVG内容
+            Improved SVG content
         """
         import re
         from bs4 import BeautifulSoup
