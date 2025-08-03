@@ -89,6 +89,8 @@ class PDFExporter:
             text-align: center;
             margin: 25px 0;
             page-break-inside: avoid;
+            width: 100%;
+            overflow: visible;
         }
         
         .mermaid-title {
@@ -99,13 +101,29 @@ class PDFExporter:
         }
         
         .mermaid-diagram {
-            display: inline-block;
-            max-width: 100%;
+            display: block;
+            width: 100%;
+            overflow: visible;
+            text-align: center;
         }
         
         .mermaid-diagram svg {
             max-width: 100%;
-            height: auto;
+            width: auto !important;
+            height: auto !important;
+            display: inline-block;
+            margin: 0 auto;
+        }
+        
+        /* Handle very wide diagrams by scaling them down */
+        @media print {
+            .mermaid-diagram svg {
+                max-width: 100%;
+                transform-origin: center top;
+            }
+            .mermaid-container {
+                overflow: visible;
+            }
         }
         
         /* 确保列表正确显示 */
