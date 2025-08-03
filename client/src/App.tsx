@@ -376,7 +376,7 @@ function App() {
     setAppState(prev => ({
       ...prev,
       isAIProcessing: isProcessing,
-      aiProcessingStatus: message || (isProcessing ? "AI processing..." : "AI standby")
+      aiProcessingStatus: message || (isProcessing ? "AI analysing..." : "AI standby")
     }));
   }, []);
 
