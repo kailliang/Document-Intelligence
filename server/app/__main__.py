@@ -734,8 +734,8 @@ async def cleanup_pdf_file(filename: str, delay_hours: int = 24):
 async def cleanup_old_pdfs():
     """Clean up old PDF files on application startup"""
     try:
-        from app.internal.pdf_export import PDFExporter
-        exporter = PDFExporter()
+        from app.internal.pdf_export_simple import SimplePDFExporter
+        exporter = SimplePDFExporter()
         cleaned_count = await exporter.cleanup_old_files(max_age_hours=24)
         logger.info(f"Cleaned up {cleaned_count} old PDF files on startup")
     except Exception as e:
