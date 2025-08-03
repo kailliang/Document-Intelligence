@@ -191,13 +191,18 @@ class MermaidRenderer:
                             theme: 'default',
                             securityLevel: 'loose',
                             fontFamily: 'Arial, sans-serif',
+                            htmlLabels: false,
                             flowchart: {{
                                 htmlLabels: false,
                                 curve: 'basis',
                                 useMaxWidth: false,
                                 nodeSpacing: 30,
                                 rankSpacing: 40,
-                                padding: 10
+                                padding: 10,
+                                wrapping: false
+                            }},
+                            sequence: {{
+                                htmlLabels: false
                             }},
                             themeVariables: {{
                                 fontSize: '14px',
@@ -227,8 +232,10 @@ class MermaidRenderer:
                     if svg_outer:
                         # Remove CSS animations that break PDF rendering
                         clean_svg = self._remove_css_animations(svg_outer)
+                        # Remove foreignObject elements that cause PDF issues
+                        pdf_compatible_svg = self._remove_foreign_objects(clean_svg)
                         # Ensure proper ViewBox for scaling
-                        improved_svg = self._improve_svg_scaling(clean_svg)
+                        improved_svg = self._improve_svg_scaling(pdf_compatible_svg)
                         await browser.close()
                         return improved_svg
                     else:
@@ -238,7 +245,8 @@ class MermaidRenderer:
                         
                         complete_svg = f'<svg {svg_attrs}>{svg_content}</svg>'
                         clean_svg = self._remove_css_animations(complete_svg)
-                        improved_svg = self._improve_svg_scaling(clean_svg)
+                        pdf_compatible_svg = self._remove_foreign_objects(clean_svg)
+                        improved_svg = self._improve_svg_scaling(pdf_compatible_svg)
                         await browser.close()
                         return improved_svg
                 else:
@@ -310,6 +318,68 @@ class MermaidRenderer:
         
         logger.info("✅ 已移除SVG中的CSS动画和相关属性")
         return svg_content
+    
+    def _remove_foreign_objects(self, svg_content: str) -> str:
+        """
+        移除SVG中的foreignObject元素，解决PDF渲染文字显示问题
+        
+        Args:
+            svg_content: 包含foreignObject的SVG内容
+            
+        Returns:
+            移除foreignObject后的SVG内容
+        """
+        import re
+        from bs4 import BeautifulSoup
+        
+        try:
+            soup = BeautifulSoup(svg_content, 'html.parser')
+            
+            # Find all foreignObject elements
+            foreign_objects = soup.find_all('foreignObject')
+            
+            if foreign_objects:
+                logger.info(f"🔧 Found {len(foreign_objects)} foreignObject elements to remove")
+                
+                for foreign_obj in foreign_objects:
+                    # Extract text content from HTML inside foreignObject
+                    text_content = foreign_obj.get_text().strip()
+                    
+                    if text_content:
+                        # Get position and size attributes
+                        x = foreign_obj.get('x', '0')
+                        y = foreign_obj.get('y', '0')
+                        width = foreign_obj.get('width', '100')
+                        height = foreign_obj.get('height', '20')
+                        
+                        # Create SVG text element to replace foreignObject
+                        text_element = soup.new_tag('text')
+                        text_element['x'] = x
+                        text_element['y'] = str(float(y) + float(height) * 0.7)  # Adjust baseline
+                        text_element['text-anchor'] = 'middle'
+                        text_element['dominant-baseline'] = 'middle'
+                        text_element['font-family'] = 'Arial, sans-serif'
+                        text_element['font-size'] = '12px'
+                        text_element['fill'] = '#000000'
+                        text_element.string = text_content
+                        
+                        # Replace foreignObject with text element
+                        foreign_obj.replace_with(text_element)
+                        
+                        logger.info(f"📝 Replaced foreignObject with text: '{text_content}'")
+                    else:
+                        # Remove empty foreignObject
+                        foreign_obj.decompose()
+                
+                logger.info("✅ All foreignObject elements processed")
+            else:
+                logger.info("ℹ️  No foreignObject elements found")
+            
+            return str(soup)
+            
+        except Exception as e:
+            logger.warning(f"foreignObject removal failed: {e}")
+            return svg_content
     
     def _improve_svg_scaling(self, svg_content: str) -> str:
         """
