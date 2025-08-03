@@ -16,10 +16,14 @@ function MermaidNodeView({ node }: { node: any; updateAttributes?: any }) {
           startOnLoad: false, 
           theme: 'default',
           securityLevel: 'loose',
+          htmlLabels: false,
           flowchart: {
-            htmlLabels: true,
+            htmlLabels: false,
             curve: 'basis',
             useMaxWidth: true
+          },
+          sequence: {
+            htmlLabels: false
           },
           maxTextSize: 90000
         });
