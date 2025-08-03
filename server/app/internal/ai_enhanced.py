@@ -45,8 +45,8 @@ class AIEnhanced:
         Response:
         Yields JSON with suggestions including originalText and replaceTo fields
         """
-        logger.info(f"📄 Starting enhanced AI analysis, document length: {len(document)}")
-        logger.info(f"📄 Document content preview: {document[:200]}...")
+        logger.info(f"Starting enhanced AI analysis, document length: {len(document)}")
+        logger.info(f"Document content preview: {document[:200]}...")
         
         # Use Function Calling for analysis
         stream = await self._client.chat.completions.create(
@@ -65,18 +65,18 @@ class AIEnhanced:
         function_calls = []
         current_function_calls = {}  # Use dictionary to track multiple parallel function calls
         
-        logger.info("🔄 Starting AI streaming response processing...")
+        logger.info("Starting AI streaming response processing...")
         
         async for chunk in stream:
             delta = chunk.choices[0].delta
             
             # Log regular text content (for debugging)
             if delta.content:
-                logger.debug(f"📝 AI text response: {delta.content}")
+                logger.debug(f"AI text response: {delta.content}")
             
             # Process tool calls
             if delta.tool_calls:
-                logger.info(f"🔧 Received tool call: {delta.tool_calls}")
+                logger.info(f"Received tool call: {delta.tool_calls}")
                 for tool_call in delta.tool_calls:
                     call_index = tool_call.index
                     
@@ -90,7 +90,7 @@ class AIEnhanced:
                             "name": tool_call.function.name,
                             "arguments": tool_call.function.arguments or ""
                         }
-                        logger.info(f"🆕 New function call {call_index}: {tool_call.function.name}")
+                        logger.info(f"New function call {call_index}: {tool_call.function.name}")
                         
                     elif call_index in current_function_calls:
                         # Continue accumulating arguments for this index
@@ -100,10 +100,10 @@ class AIEnhanced:
         for call_index, func_call in current_function_calls.items():
             function_calls.append(func_call)
         
-        logger.info(f"📊 Collected {len(function_calls)} function calls")
+        logger.info(f"Collected {len(function_calls)} function calls")
         for i, call in enumerate(function_calls):
-            logger.info(f"🔧 Function call {i+1}: {call['name']}")
-            logger.debug(f"🔧 Arguments: {call['arguments'][:200]}...")
+            logger.info(f"Function call {i+1}: {call['name']}")
+            logger.debug(f"Arguments: {call['arguments'][:200]}...")
         
         # Process and generate response - use dictionary for deduplication and merging
         suggestions_dict = {}  # key: originalText, value: merged suggestion
@@ -114,7 +114,7 @@ class AIEnhanced:
             if func_call["name"] == "create_suggestion":
                 try:
                     args = json.loads(func_call["arguments"])
-                    logger.info(f"✅ Function arguments parsing successful: {args}")
+                    logger.info(f"Function arguments parsing successful: {args}")
                     
                     # Handle new format: one text segment may have multiple issues
                     text_issues = args.get("issues", [])
@@ -135,7 +135,7 @@ class AIEnhanced:
                             # Found duplicate suggestion, merge
                             duplicate_count += 1
                             existing_suggestion = suggestions_dict[original_text]
-                            logger.info(f"🔄 Found duplicate suggestion, merging into existing: '{original_text[:50]}...'")
+                            logger.info(f"Found duplicate suggestion, merging into existing: '{original_text[:50]}...'")
                             
                             # Merge issues arrays
                             existing_suggestion["issues"].extend(text_issues)
@@ -162,7 +162,7 @@ class AIEnhanced:
                             })
                             
                             # If new suggestion has better replaceTo, could consider updating (keep first one here)
-                            logger.info(f"📝 Merge complete, total {len(all_issues)} issues")
+                            logger.info(f"Merge complete, total {len(all_issues)} issues")
                             
                         else:
                             # New suggestion, add directly
@@ -187,16 +187,16 @@ class AIEnhanced:
                                 "issues": text_issues.copy()  # Retain detailed issues array for UI use
                             }
                             suggestions_dict[original_text] = suggestion
-                            logger.info(f"📝 Adding new suggestion: {suggestion['type']} - contains {len(text_issues)} issues")
+                            logger.info(f"Adding new suggestion: {suggestion['type']} - contains {len(text_issues)} issues")
                 except json.JSONDecodeError as e:
-                    logger.error(f"❌ JSON parsing failed: {e}")
-                    logger.error(f"❌ Original arguments: {func_call['arguments']}")
+                    logger.error(f"JSON parsing failed: {e}")
+                    logger.error(f"Original arguments: {func_call['arguments']}")
                     continue
                     
             elif func_call["name"] == "insert_diagram":
                 try:
                     args = json.loads(func_call["arguments"])
-                    logger.info(f"📊 Parsing diagram insertion request: {args}")
+                    logger.info(f"Parsing diagram insertion request: {args}")
                     
                     diagram_insertion = {
                         "insert_after_text": args.get("insert_after_text", ""),
@@ -205,10 +205,10 @@ class AIEnhanced:
                         "title": args.get("title", "")
                     }
                     diagram_insertions.append(diagram_insertion)
-                    logger.info(f"📊 Adding diagram insertion: after '{args.get('insert_after_text', '')[:50]}...'")
+                    logger.info(f"Adding diagram insertion: after '{args.get('insert_after_text', '')[:50]}...'")
                 except json.JSONDecodeError as e:
-                    logger.error(f"❌ Diagram insertion JSON parsing failed: {e}")
-                    logger.error(f"❌ Original arguments: {func_call['arguments']}")
+                    logger.error(f"Diagram insertion JSON parsing failed: {e}")
+                    logger.error(f"Original arguments: {func_call['arguments']}")
                     continue
         
         # Convert dictionary to list
@@ -217,11 +217,11 @@ class AIEnhanced:
         # Log deduplication statistics
         total_suggestions = len([call for call in function_calls if call["name"] == "create_suggestion"])
         final_suggestions = len(issues)
-        logger.info(f"📊 Suggestion deduplication statistics: original {total_suggestions} suggestions, {final_suggestions} after merging")
+        logger.info(f"Suggestion deduplication statistics: original {total_suggestions} suggestions, {final_suggestions} after merging")
         if duplicate_count > 0:
-            logger.info(f"🔄 Found and merged {duplicate_count} duplicate suggestions, saved {duplicate_count} duplicate suggestion cards")
+            logger.info(f"Found and merged {duplicate_count} duplicate suggestions, saved {duplicate_count} duplicate suggestion cards")
         
-        logger.info(f"✨ Finally generated {len(issues)} suggestions and {len(diagram_insertions)} diagram insertions")
+        logger.info(f"Finally generated {len(issues)} suggestions and {len(diagram_insertions)} diagram insertions")
         
         # Generate JSON response
         response = {
@@ -229,7 +229,7 @@ class AIEnhanced:
             "diagram_insertions": diagram_insertions
         }
         response_json = json.dumps(response, ensure_ascii=False)
-        logger.info(f"📤 Returning response: {response_json[:200]}...")
+        logger.info(f"Returning response: {response_json[:200]}...")
         yield response_json
 
     async def chat_with_user(self, messages: List[Dict[str, str]]) -> AsyncGenerator[str | None, None]:
@@ -288,7 +288,7 @@ class AIEnhanced:
         plain_text_content = ""
         if document_content.strip():
             plain_text_content = html_to_plain_text(document_content)
-            logger.info(f"📄 Document content length: {len(plain_text_content)}")
+            logger.info(f"Document content length: {len(plain_text_content)}")
 
         # Build enhanced message list, including system prompts and document context
         enhanced_messages = []
@@ -314,7 +314,7 @@ class AIEnhanced:
         else:
             enhanced_messages = messages
 
-        logger.info(f"🤖 Starting AI chat with document context, message count: {len(enhanced_messages)}")
+        logger.info(f"Starting AI chat with document context, message count: {len(enhanced_messages)}")
 
         # Use Function Calling for chat
         stream = await self._client.chat.completions.create(
@@ -374,7 +374,7 @@ class AIEnhanced:
                 # Insert diagram into document AND display in chat
                 try:
                     args = json.loads(func_call["arguments"])
-                    logger.info(f"📊 AI requests diagram insertion: {args}")
+                    logger.info(f"AI requests diagram insertion: {args}")
                     
                     # First, display the diagram in chat for user to see
                     mermaid_syntax = args.get('mermaid_syntax', '')
@@ -394,5 +394,5 @@ class AIEnhanced:
                     yield f"DIAGRAM_INSERT:{insert_command}"
                     
                 except json.JSONDecodeError as e:
-                    logger.error(f"❌ Diagram insertion parameter parsing failed: {e}")
+                    logger.error(f"Diagram insertion parameter parsing failed: {e}")
                     continue
