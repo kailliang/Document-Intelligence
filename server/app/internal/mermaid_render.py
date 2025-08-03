@@ -440,13 +440,14 @@ class MermaidRenderer:
                             text_elem['dominant-baseline'] = 'middle'
                         logger.info(f"📐 Applied centering to node label: '{text_elem.get_text()[:20]}...'")
                     
-                    # Also check tspan elements within text for centering
+                    # Remove conflicting text-anchor from tspan elements
+                    # Tspan elements should inherit centering from parent text element
                     tspans = text_elem.find_all('tspan')
                     for tspan in tspans:
-                        if not tspan.get('text-anchor') and text_elem.get('text-anchor'):
-                            tspan['text-anchor'] = text_elem.get('text-anchor')
-                        if tspan.get('x') is None:
-                            tspan['x'] = '0'  # Center relative to parent text element
+                        # Remove text-anchor from tspan to prevent conflicts with parent
+                        if tspan.get('text-anchor'):
+                            del tspan['text-anchor']
+                        # Don't force x position on tspan elements - let them position naturally
             
             # Find all arrow markers and ensure they're visible
             markers = soup.find_all('path', class_='arrowMarkerPath')
