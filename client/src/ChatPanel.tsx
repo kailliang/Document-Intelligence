@@ -246,7 +246,7 @@ export default function ChatPanel({ className, getCurrentDocumentContent, onDiag
               <p>Try these questions:</p>
               <p className="italic">"How to write a good patent claim?"</p>
               <p className="italic">"Help me generate a patent process flowchart"</p>
-              <p className="italic">"What is antecedent basis?"</p>
+              <p className="italic">"Please generate a diagram based on the description provided."</p>
             </div>
           </div>
         ) : (
