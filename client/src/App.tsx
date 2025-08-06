@@ -1387,32 +1387,30 @@ function App() {
                                 {/* AI suggestion with confidence */}
                                 {(suggestion.replaceTo !== undefined || suggestion.suggestion) && (
                                   <>
-                                    <div className="flex items-center justify-between mb-2">
-                                      <p className="text-sm font-medium text-green-600">💡 Suggestion:</p>
-                                      {/* Confidence display */}
-                                      {suggestion.confidence !== undefined && (
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs text-gray-600">Confidence:</span>
-                                          <div className="flex items-center gap-1">
-                                            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                              <div 
-                                                className={`h-full transition-all duration-300 ${
-                                                  suggestion.confidence >= 0.8 ? 'bg-green-500' :
-                                                  suggestion.confidence >= 0.6 ? 'bg-yellow-500' : 'bg-orange-500'
-                                                }`}
-                                                style={{ width: `${suggestion.confidence * 100}%` }}
-                                              />
-                                            </div>
-                                            <span className={`text-xs font-medium ${
-                                              suggestion.confidence >= 0.8 ? 'text-green-600' :
-                                              suggestion.confidence >= 0.6 ? 'text-yellow-600' : 'text-orange-600'
-                                            }`}>
-                                              {(suggestion.confidence * 100).toFixed(0)}%
-                                            </span>
+                                    <p className="text-sm font-medium text-green-600 mb-1">💡 Suggestion:</p>
+                                    {/* Confidence display below Suggestion */}
+                                    {suggestion.confidence !== undefined && (
+                                      <div className="flex items-center gap-2 mb-3 ml-4">
+                                        <span className="text-xs text-gray-600">Confidence:</span>
+                                        <div className="flex items-center gap-1">
+                                          <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                            <div 
+                                              className={`h-full transition-all duration-300 ${
+                                                suggestion.confidence >= 0.8 ? 'bg-green-500' :
+                                                suggestion.confidence >= 0.6 ? 'bg-yellow-500' : 'bg-orange-500'
+                                              }`}
+                                              style={{ width: `${suggestion.confidence * 100}%` }}
+                                            />
                                           </div>
+                                          <span className={`text-xs font-medium ${
+                                            suggestion.confidence >= 0.8 ? 'text-green-600' :
+                                            suggestion.confidence >= 0.6 ? 'text-yellow-600' : 'text-orange-600'
+                                          }`}>
+                                            {(suggestion.confidence * 100).toFixed(0)}%
+                                          </span>
                                         </div>
-                                      )}
-                                    </div>
+                                      </div>
+                                    )}
                                     <div className="bg-white p-3 rounded border mb-3">
                                       <p className="text-sm text-gray-700 leading-relaxed font-mono">
                                         {suggestion.replaceTo || suggestion.suggestion}
