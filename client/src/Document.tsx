@@ -12,6 +12,12 @@ interface AISuggestion {
   suggestion: string;
   originalText?: string;  // Added: original text (for precise matching)
   replaceTo?: string;     // Added: suggested replacement text
+  confidence?: number;     // Added: confidence score (0-1)
+  confidence_factors?: {   // Added: factors affecting confidence (for debugging)
+    text_length: number;
+    issue_type: string;
+    has_detailed_replacement: boolean;
+  };
 }
 
 interface DiagramInsertion {

@@ -46,6 +46,12 @@ interface AISuggestion {
   suggestion: string;
   originalText?: string;  // Added: original text (for precise matching)
   replaceTo?: string;     // Added: suggested replacement text
+  confidence?: number;     // Added: confidence score (0-1)
+  confidence_factors?: {   // Added: factors affecting confidence (for debugging)
+    text_length: number;
+    issue_type: string;
+    has_detailed_replacement: boolean;
+  };
 }
 
 interface DiagramInsertion {
@@ -1335,6 +1341,11 @@ function App() {
                               className={`p-3 rounded-lg border-l-4 transition-all duration-200 ${activeHighlightIndex === index
                                 ? 'ring-2 ring-offset-2 ring-gray-400 shadow-lg' // Active state
                                 : ''
+                                } ${
+                                // Apply opacity for low confidence suggestions
+                                suggestion.confidence !== undefined && suggestion.confidence < 0.5
+                                  ? 'opacity-75'
+                                  : ''
                                 } ${suggestion.severity === 'high'
                                   ? 'border-red-500 bg-red-50'
                                   : suggestion.severity === 'medium'
@@ -1373,10 +1384,35 @@ function App() {
                                   {suggestion.description}
                                 </p>
 
-                                {/* AI suggestion */}
+                                {/* AI suggestion with confidence */}
                                 {(suggestion.replaceTo !== undefined || suggestion.suggestion) && (
                                   <>
-                                    <p className="text-sm font-medium text-green-600 mb-2">💡 Suggestion:</p>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-sm font-medium text-green-600">💡 Suggestion:</p>
+                                      {/* Confidence display */}
+                                      {suggestion.confidence !== undefined && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-gray-600">Confidence:</span>
+                                          <div className="flex items-center gap-1">
+                                            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                              <div 
+                                                className={`h-full transition-all duration-300 ${
+                                                  suggestion.confidence >= 0.8 ? 'bg-green-500' :
+                                                  suggestion.confidence >= 0.6 ? 'bg-yellow-500' : 'bg-orange-500'
+                                                }`}
+                                                style={{ width: `${suggestion.confidence * 100}%` }}
+                                              />
+                                            </div>
+                                            <span className={`text-xs font-medium ${
+                                              suggestion.confidence >= 0.8 ? 'text-green-600' :
+                                              suggestion.confidence >= 0.6 ? 'text-yellow-600' : 'text-orange-600'
+                                            }`}>
+                                              {(suggestion.confidence * 100).toFixed(0)}%
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                     <div className="bg-white p-3 rounded border mb-3">
                                       <p className="text-sm text-gray-700 leading-relaxed font-mono">
                                         {suggestion.replaceTo || suggestion.suggestion}

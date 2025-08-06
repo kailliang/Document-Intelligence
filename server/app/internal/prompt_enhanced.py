@@ -109,7 +109,13 @@ EXAMPLES:
 
 This approach ensures accurate text matching and allows users to accept individual corrections.
 
-When you find issues, use the create_suggestion function to report them.
+When you find issues, use the create_suggestion function to report them. 
+IMPORTANT: Always evaluate your confidence level (0-1) for each suggestion based on:
+- How clear and unambiguous the issue is
+- How certain you are about the correction
+- The completeness of your proposed fix
+Use higher confidence (0.8-1.0) for obvious errors and lower confidence (0.5-0.7) for stylistic suggestions.
+
 For diagrams or flowcharts requested by the user, use the create_diagram function.
 """
 
@@ -157,9 +163,15 @@ FUNCTION_TOOLS = [
                     "paragraph": {
                         "type": "integer",
                         "description": "The paragraph number (1-based index) where the issue occurs"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Your confidence level in this suggestion (0-1). Consider: clarity of the issue, certainty of the correction, and completeness of the fix. Use 0.9-1.0 for obvious errors, 0.7-0.9 for likely issues, 0.5-0.7 for possible improvements, below 0.5 for uncertain suggestions."
                     }
                 },
-                "required": ["originalText", "replaceTo", "issues", "paragraph"]
+                "required": ["originalText", "replaceTo", "issues", "paragraph", "confidence"]
             }
         }
     },

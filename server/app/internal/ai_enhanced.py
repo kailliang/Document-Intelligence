@@ -155,10 +155,21 @@ class AIEnhanced:
                             max_severity = max(severities, key=lambda x: severity_order.get(x, 2))
                             
                             # Update merged suggestion
+                            # Average confidence when merging
+                            existing_confidence = existing_suggestion.get("confidence", 0.75)
+                            new_confidence = args.get("confidence", 0.75)
+                            merged_confidence = (existing_confidence + new_confidence) / 2
+                            
                             existing_suggestion.update({
                                 "type": " & ".join(unique_types),
                                 "severity": max_severity,
                                 "description": " | ".join(unique_descriptions),
+                                "confidence": merged_confidence,
+                                "confidence_factors": {
+                                    "text_length": len(original_text),
+                                    "issue_type": " & ".join(unique_types),
+                                    "has_detailed_replacement": bool(args.get("replaceTo", "").strip())
+                                }
                             })
                             
                             # If new suggestion has better replaceTo, could consider updating (keep first one here)
@@ -184,7 +195,13 @@ class AIEnhanced:
                                 "suggestion": args.get("replaceTo", ""),  # Mapping field
                                 "originalText": original_text,
                                 "replaceTo": args.get("replaceTo", ""),
-                                "issues": text_issues.copy()  # Retain detailed issues array for UI use
+                                "issues": text_issues.copy(),  # Retain detailed issues array for UI use
+                                "confidence": args.get("confidence", 0.75),  # Add confidence score with default
+                                "confidence_factors": {  # Add confidence factors for debugging
+                                    "text_length": len(original_text),
+                                    "issue_type": " & ".join(types),
+                                    "has_detailed_replacement": bool(args.get("replaceTo", "").strip())
+                                }
                             }
                             suggestions_dict[original_text] = suggestion
                             logger.info(f"Adding new suggestion: {suggestion['type']} - contains {len(text_issues)} issues")
