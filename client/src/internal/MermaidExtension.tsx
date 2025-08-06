@@ -23,7 +23,7 @@ function MermaidNodeView({ node }: { node: any; updateAttributes?: any }) {
             useMaxWidth: true
           },
           sequence: {
-            htmlLabels: false
+            // htmlLabels removed as it's not in the SequenceDiagramConfig type
           },
           maxTextSize: 90000
         });
