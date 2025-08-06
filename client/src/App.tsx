@@ -955,18 +955,10 @@ function App() {
                           </svg>
                         </div>
                         <div className="flex-1 min-w-0" style={{ maxWidth: 'calc(100% - 44px)' }}>
-                          <div className={`font-medium text-sm leading-tight ${
+                          <div className={`font-medium text-sm leading-tight truncate ${
                             appState.currentDocument?.id === doc.id ? 'text-blue-700' : 'text-gray-800'
                           }`} 
-                          title={doc.title}
-                          style={{
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                            wordBreak: 'break-word',
-                            lineHeight: '1.2'
-                          }}>
+                          title={doc.title}>
                             {doc.title}
                           </div>
                           <div className={`text-xs mt-1 ${
