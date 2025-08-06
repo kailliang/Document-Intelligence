@@ -811,14 +811,24 @@ function App() {
     }
 
     // Remove from suggestions list - based on content matching not index, avoiding wrong deletion due to sorting
-    setAppState(prev => ({
-      ...prev,
-      aiSuggestions: prev.aiSuggestions.filter(s =>
+    setAppState(prev => {
+      const newSuggestions = prev.aiSuggestions.filter(s =>
         !(s.originalText === suggestion.originalText &&
           s.paragraph === suggestion.paragraph &&
           s.type === suggestion.type)
-      )
-    }));
+      );
+      
+      // Update status if no suggestions remain
+      const newStatus = newSuggestions.length === 0 
+        ? 'AI standby' 
+        : `AI analysis complete, found ${newSuggestions.length} suggestions`;
+      
+      return {
+        ...prev,
+        aiSuggestions: newSuggestions,
+        aiProcessingStatus: newStatus
+      };
+    });
   }, []);
 
   /**
@@ -839,14 +849,24 @@ function App() {
    */
   const closeSuggestion = useCallback((suggestion: AISuggestion) => {
     console.log('❌ Dismissing suggestion:', suggestion.type, 'paragraph', suggestion.paragraph);
-    setAppState(prev => ({
-      ...prev,
-      aiSuggestions: prev.aiSuggestions.filter(s =>
+    setAppState(prev => {
+      const newSuggestions = prev.aiSuggestions.filter(s =>
         !(s.originalText === suggestion.originalText &&
           s.paragraph === suggestion.paragraph &&
           s.type === suggestion.type)
-      )
-    }));
+      );
+      
+      // Update status if no suggestions remain
+      const newStatus = newSuggestions.length === 0 
+        ? 'AI standby' 
+        : `AI analysis complete, found ${newSuggestions.length} suggestions`;
+      
+      return {
+        ...prev,
+        aiSuggestions: newSuggestions,
+        aiProcessingStatus: newStatus
+      };
+    });
   }, []);
 
   return (
