@@ -40,7 +40,7 @@ This is a **Patent Review System** - a full-stack web application that enables u
 - `server/app/internal/ai_enhanced.py`: Enhanced AI with Function Calling for multiple suggestions
 - `server/app/internal/prompt_enhanced.py`: Specialized prompts for patent analysis with rule-based validation
 - `server/app/internal/mermaid_render.py`: Server-side Mermaid diagram rendering
-- `server/app/internal/pdf_export.py`: Backend PDF generation with WeasyPrint
+- `server/app/internal/pdf_export_simple.py`: Backend PDF generation with Playwright (simplified approach)
 - `server/app/internal/patent_chat_prompt.py`: Chat-specific prompts and responses
 - `server/app/models.py`: Database models for Document and DocumentVersion tables
 
@@ -83,8 +83,14 @@ cd client && npm run dev
 # Check for TypeScript errors
 cd client && npm run build
 
+# Lint TypeScript code
+cd client && npm run lint
+
 # Test API endpoints via FastAPI docs
 # Visit http://localhost:8000/docs after starting backend
+
+# Check Python syntax (no test suite currently exists)
+cd server && python -m py_compile app/**/*.py
 
 # Manual testing workflow:
 # 1. Start services: ./start-dev.sh
@@ -92,6 +98,10 @@ cd client && npm run build
 # 3. Test AI suggestions and chat functionality
 # 4. Test PDF export feature
 # 5. Test version management features
+
+# Debug WebSocket connections
+# Check browser console for WebSocket connection status
+# Backend logs will show WebSocket connection/disconnection events
 ```
 
 **Docker (from project root):**
@@ -111,6 +121,20 @@ docker-compose up --build    # Build and run both services
 - FastAPI docs available at http://localhost:8000/docs
 - Ensure .env files are configured before starting services
 - **Security**: Never commit API keys to version control - use .env files and ensure .env.example contains placeholder values only
+
+**Environment Setup Requirements:**
+```bash
+# Create conda environments if they don't exist
+conda create -n patent-backend python=3.11
+conda create -n patent-frontend nodejs=18
+
+# Install dependencies
+conda activate patent-backend && cd server && pip install -r requirements.txt
+conda activate patent-frontend && cd client && npm install
+
+# Install Playwright browsers for PDF export
+conda activate patent-backend && playwright install chromium
+```
 
 ## Database Architecture
 
@@ -219,9 +243,14 @@ VITE_USE_ENHANCED_WS=true
 ```
 
 **Dependencies:**
-- **Backend**: FastAPI, SQLAlchemy, OpenAI, BeautifulSoup4, WebSockets, WeasyPrint, Playwright
+- **Backend**: FastAPI, SQLAlchemy, OpenAI, BeautifulSoup4, WebSockets, Playwright
 - **Frontend**: React 18, TypeScript, TipTap, TailwindCSS, Mermaid, html2canvas, jsPDF, @tanstack/react-query, turndown, markdown-it, react-markdown
 - **Development**: Vite (frontend), Uvicorn (backend), ESLint
+
+**Critical Dependencies Notes:**
+- **PDF Export**: Uses Playwright (not WeasyPrint) for simplified PDF generation
+- **WebSocket**: Uses `react-use-websocket` for automatic reconnection handling
+- **Mermaid**: Version 11.9.0 for diagram rendering compatibility
 
 ## Important Technical Notes
 
@@ -236,6 +265,11 @@ VITE_USE_ENHANCED_WS=true
 - **Streaming Parser**: Custom StreamingJSONParser handles intermittent JSON formatting issues  
 - **Real-time Document Sync**: Editor content accessed via `editorRef.current.getHTML()` for current state
 - **Multiple Function Calls**: AI processes entire document and calls `create_suggestion` separately for each issue
+- **JSON Error Recovery**: Multiple fallback strategies for malformed AI responses:
+  - Attempt direct JSON parsing
+  - Extract JSON object with regex patterns
+  - Parse individual issue objects separately
+  - Log detailed error information for debugging
 
 **Text Processing and Highlighting:**
 - **HTML→Plain Text**: BeautifulSoup conversion with text validation
@@ -258,11 +292,63 @@ VITE_USE_ENHANCED_WS=true
 - **UTC Timestamps**: All datetime fields use UTC for consistency
 
 **PDF Export System:**
-- **Backend PDF Generation**: Uses WeasyPrint for high-quality PDF output with proper fonts and layouts
+- **Backend PDF Generation**: Uses Playwright for simplified PDF generation (not WeasyPrint)
 - **Mermaid Chart Support**: Playwright renders Mermaid diagrams to SVG for perfect PDF integration
 - **API Endpoints**: `POST /api/documents/{id}/export/pdf` and `GET /api/downloads/{filename}`
 - **File Management**: Automatic cleanup of temporary PDF files after 24 hours
 - **Error Handling**: Comprehensive error messages and timeout protection
 - **Security**: Path validation and file type restrictions for safe downloads
+- **Mermaid SVG Processing**: 
+  - Removes foreignObject elements for compatibility
+  - Applies explicit styling to SVG elements
+  - Fixes text positioning and removes animations
+  - Handles wide diagrams with proper scaling
+
+## Common Debugging Scenarios
+
+**WebSocket Connection Issues:**
+```bash
+# Check if enhanced WebSocket is enabled
+cat client/.env | grep VITE_USE_ENHANCED_WS  # Should be "true"
+
+# Monitor WebSocket connections in browser
+# Open DevTools > Network > WS tab
+# Look for /ws/enhanced connection status
+```
+
+**AI Suggestion Not Working:**
+1. Check OpenAI API key is set: `cat server/.env | grep OPENAI_API_KEY`
+2. Verify WebSocket connection in browser console
+3. Check backend logs for AI processing errors
+4. Ensure document has text content (AI won't process empty documents)
+
+**PDF Export Failures:**
+```bash
+# Install Playwright browsers if missing
+conda activate patent-backend
+playwright install chromium
+
+# Check export directory permissions
+ls -la server/app/static/exports/
+
+# Monitor backend logs during export for detailed errors
+```
+
+**Database Issues:**
+```bash
+# Reset database if corrupted
+rm server/app/database.db
+# Restart backend to recreate database
+
+# Check database schema
+sqlite3 server/app/database.db ".schema"
+```
+
+**Port Conflicts:**
+```bash
+# Kill processes on specific ports
+lsof -ti:8000 | xargs kill -9  # Backend port
+lsof -ti:5173 | xargs kill -9  # Frontend port
+```
 
 The codebase implements a complete patent review workflow with sophisticated real-time AI features, comprehensive version control, high-quality PDF export capabilities, and a responsive user interface.

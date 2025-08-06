@@ -5,7 +5,6 @@ import LoadingOverlay from "./internal/LoadingOverlay";
 import Logo from "./assets/logo.png";
 import ChatPanel from "./ChatPanel";
 import { findTextInDocument, replaceText } from "./internal/HighlightExtension";
-import { insertDiagramAfterText } from "./internal/MermaidExtension";
 import TurndownService from "turndown";
 
 const BACKEND_URL = "http://localhost:8000";
