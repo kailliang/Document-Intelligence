@@ -21,36 +21,37 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
+    current_document_content: str = ""  # New: current document content
 
 
 async def websocket_enhanced_endpoint(websocket: WebSocket):
     """
-    增强版WebSocket端点：支持Function Calling的AI建议系统
+    Enhanced WebSocket endpoint: AI suggestion system with Function Calling support
     
-    特性：
-    - 使用Function Calling获取更精确的文本匹配
-    - 支持originalText和replaceTo字段
-    - 更准确的建议内容
+    Features:
+    - Use Function Calling for more precise text matching
+    - Support originalText and replaceTo fields
+    - More accurate suggestion content
     """
     await websocket.accept()
-    logger.info("Enhanced WebSocket连接已建立")
+    logger.info("Enhanced WebSocket connection established")
     
-    # 尝试初始化增强版AI服务
+    # Try to initialize enhanced AI service
     try:
         ai = get_ai_enhanced()
-        logger.info("✅ Enhanced AI服务初始化成功")
-        # 发送连接成功消息
+        logger.info("✅ Enhanced AI service initialized successfully")
+        # Send connection success message
         success_msg = {
             "type": "connection_success",
-            "message": "Enhanced AI服务已就绪",
+            "message": "Enhanced AI service ready",
             "timestamp": datetime.utcnow().isoformat()
         }
         await websocket.send_text(json.dumps(success_msg))
     except ValueError as e:
-        logger.error(f"Enhanced AI服务初始化失败: {e}")
+        logger.error(f"Enhanced AI service initialization failed: {e}")
         error_msg = {
             "type": "ai_error",
-            "message": f"AI服务初始化失败: {str(e)}",
+            "message": f"AI service initialization failed: {str(e)}",
             "timestamp": datetime.utcnow().isoformat()
         }
         await websocket.send_text(json.dumps(error_msg))
@@ -59,27 +60,27 @@ async def websocket_enhanced_endpoint(websocket: WebSocket):
     
     try:
         while True:
-            # 接收HTML内容
+            # Receive HTML content
             html_content = await websocket.receive_text()
-            logger.info(f"收到HTML内容，长度: {len(html_content)}")
+            logger.info(f"Received HTML content, length: {len(html_content)}")
             
-            # 通知前端开始处理
+            # Notify frontend processing started
             processing_msg = {
                 "type": "processing_start",
-                "message": "正在分析文档...",
+                "message": "Analysing document...",
                 "timestamp": datetime.utcnow().isoformat()
             }
             await websocket.send_text(json.dumps(processing_msg))
             
             try:
-                # HTML转换为纯文本
+                # Convert HTML to plain text
                 plain_text = html_to_plain_text(html_content)
-                logger.info(f"转换后纯文本长度: {len(plain_text)}")
+                logger.info(f"Converted plain text length: {len(plain_text)}")
                 
-                # 验证文本内容
+                # Validate text content
                 is_valid, error_message = validate_text_for_ai(plain_text)
                 if not is_valid:
-                    logger.warning(f"文本验证失败: {error_message}")
+                    logger.warning(f"Text validation failed: {error_message}")
                     validation_error = {
                         "type": "validation_error",
                         "message": error_message,
@@ -88,56 +89,56 @@ async def websocket_enhanced_endpoint(websocket: WebSocket):
                     await websocket.send_text(json.dumps(validation_error))
                     continue
                 
-                # 使用增强版AI分析（支持Function Calling）
-                logger.info("开始增强版AI文档分析...")
+                # Use enhanced AI analysis (supports Function Calling)
+                logger.info("Starting enhanced AI document analysis...")
                 response_chunks = []
                 
                 async for chunk in ai.review_document_with_functions(plain_text):
                     if chunk:
                         response_chunks.append(chunk)
                 
-                # 合并所有响应
+                # Merge all responses
                 full_response = "".join(response_chunks)
                 
                 try:
-                    # 解析JSON响应
+                    # Parse JSON response
                     parsed_result = json.loads(full_response)
                     
-                    # 发送完整的建议结果
+                    # Send complete suggestion results
                     success_response = {
                         "type": "ai_suggestions",
                         "data": parsed_result,
                         "timestamp": datetime.utcnow().isoformat()
                     }
                     await websocket.send_text(json.dumps(success_response))
-                    logger.info(f"Enhanced AI分析完成，发现 {len(parsed_result.get('issues', []))} 个问题")
+                    logger.info(f"Enhanced AI analysis complete, found {len(parsed_result.get('issues', []))} issues")
                     
                 except json.JSONDecodeError as e:
-                    logger.error(f"JSON解析失败: {e}")
+                    logger.error(f"JSON parsing failed: {e}")
                     error_response = {
                         "type": "parsing_error",
-                        "message": "AI响应解析失败",
+                        "message": "AI response parsing failed",
                         "timestamp": datetime.utcnow().isoformat()
                     }
                     await websocket.send_text(json.dumps(error_response))
                     
             except Exception as e:
-                logger.error(f"处理分析时出错: {e}")
+                logger.error(f"Error during analysis processing: {e}")
                 error_response = {
                     "type": "ai_error",
-                    "message": f"AI分析失败: {str(e)}",
+                    "message": f"AI analysis failed: {str(e)}",
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 await websocket.send_text(json.dumps(error_response))
                 
     except WebSocketDisconnect:
-        logger.info("Enhanced WebSocket连接已断开")
+        logger.info("Enhanced WebSocket connection disconnected")
     except Exception as e:
-        logger.error(f"Enhanced WebSocket处理错误: {e}")
+        logger.error(f"Enhanced WebSocket processing error: {e}")
         try:
             error_response = {
                 "type": "server_error",
-                "message": f"服务器内部错误: {str(e)}"
+                "message": f"Server internal error: {str(e)}"
             }
             await websocket.send_text(json.dumps(error_response))
         except:
@@ -146,29 +147,46 @@ async def websocket_enhanced_endpoint(websocket: WebSocket):
 
 async def chat_with_ai(request: ChatRequest):
     """
-    AI聊天功能端点
+    Enhanced AI chat functionality endpoint
     
-    支持与AI进行对话，包括：
-    - 提问专利相关问题
-    - 请求生成图表
-    - 获取专利撰写建议
+    Supports AI conversation with document context, including:
+    - Patent Q&A based on current document content
+    - Precise diagram insertion in documents
+    - Patent claims analysis and suggestions
     """
     try:
         ai = get_ai_enhanced()
         
-        # 构建消息历史
+        # Build message history
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
         
-        # 获取AI响应
+        # Use chat functionality with document context
         response_chunks = []
-        async for chunk in ai.chat_with_user(messages):
+        diagram_insertions = []
+        
+        async for chunk in ai.chat_with_document_context(messages, request.current_document_content):
             if chunk:
-                response_chunks.append(chunk)
+                # Check if it's a diagram insertion instruction
+                if chunk.startswith("DIAGRAM_INSERT:"):
+                    try:
+                        diagram_data = json.loads(chunk[15:])  # Remove prefix
+                        diagram_insertions.append(diagram_data)
+                        logger.info(f"📊 Collected diagram insertion request: {diagram_data}")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"❌ Diagram insertion data parsing failed: {e}")
+                else:
+                    response_chunks.append(chunk)
         
         full_response = "".join(response_chunks)
         
-        return {"response": full_response}
+        # Build response, including diagram insertion information
+        result = {"response": full_response}
+        if diagram_insertions:
+            result["diagram_insertions"] = diagram_insertions
+            logger.info(f"✅ Returning response contains {len(diagram_insertions)} diagram insertions")
+        
+        return result
         
     except Exception as e:
-        logger.error(f"聊天处理错误: {e}")
+        logger.error(f"Chat processing error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

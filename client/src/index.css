@@ -1,74 +1,95 @@
 @import "tailwindcss";
 
 /* ===================================================================
-   现代化CSS变量定义 - 支持深色/浅色主题
+   Modern CSS Variable Definitions - Dark/Light Theme Support
    =================================================================== */
 :root {
-  /* 字体设置 */
+  /* Font settings */
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   line-height: 1.6;
   font-weight: 400;
-  
-  /* 浅色主题颜色方案 */
-  --color-primary: #1e40af;        /* 主蓝色 */
-  --color-primary-hover: #1d4ed8;  /* 主蓝色悬停 */
-  --color-secondary: #10b981;      /* 绿色强调 */
-  --color-secondary-hover: #059669; /* 绿色悬停 */
-  
-  /* 文字颜色 */
-  --color-text-primary: #1f2937;   /* 主要文字 */
-  --color-text-secondary: #6b7280; /* 次要文字 */
-  --color-text-muted: #9ca3af;     /* 弱化文字 */
-  
-  /* 背景颜色 */
-  --color-bg-primary: #ffffff;     /* 主背景 */
-  --color-bg-secondary: #f9fafb;   /* 次要背景 */
-  --color-bg-tertiary: #f3f4f6;    /* 第三级背景 */
-  
-  /* 边框颜色 */
-  --color-border-light: #e5e7eb;   /* 浅边框 */
-  --color-border-medium: #d1d5db;  /* 中等边框 */
-  --color-border-dark: #9ca3af;    /* 深边框 */
-  
-  /* 状态颜色 */
-  --color-success: #10b981;        /* 成功状态 */
-  --color-warning: #f59e0b;        /* 警告状态 */
-  --color-error: #ef4444;          /* 错误状态 */
-  --color-info: #3b82f6;           /* 信息状态 */
-  
-  /* 阴影 */
+
+  /* Light theme color scheme */
+  --color-primary: #1e40af;
+  /* Primary blue */
+  --color-primary-hover: #1d4ed8;
+  /* Primary blue hover */
+  --color-secondary: #10b981;
+  /* Green accent */
+  --color-secondary-hover: #059669;
+  /* Green hover */
+
+  /* Text colors */
+  --color-text-primary: #1f2937;
+  /* Primary text */
+  --color-text-secondary: #6b7280;
+  /* Secondary text */
+  --color-text-muted: #9ca3af;
+  /* Muted text */
+
+  /* Background colors */
+  --color-bg-primary: #ffffff;
+  /* Primary background */
+  --color-bg-secondary: #f9fafb;
+  /* Secondary background */
+  --color-bg-tertiary: #f3f4f6;
+  /* Tertiary background */
+
+  /* Border colors */
+  --color-border-light: #e5e7eb;
+  /* Light border */
+  --color-border-medium: #d1d5db;
+  /* Medium border */
+  --color-border-dark: #9ca3af;
+  /* Dark border */
+
+  /* Status colors */
+  --color-success: #10b981;
+  /* Success status */
+  --color-warning: #f59e0b;
+  /* Warning status */
+  --color-error: #ef4444;
+  /* Error status */
+  --color-info: #3b82f6;
+  /* Info status */
+
+  /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  
-  /* 圆角 */
-  --radius-sm: 0.25rem;  /* 4px */
-  --radius-md: 0.5rem;   /* 8px */
-  --radius-lg: 0.75rem;  /* 12px */
-  --radius-xl: 1rem;     /* 16px */
-  
-  /* 动画时长 */
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  /* 4px */
+  --radius-md: 0.5rem;
+  /* 8px */
+  --radius-lg: 0.75rem;
+  /* 12px */
+  --radius-xl: 1rem;
+  /* 16px */
+
+  /* Animation duration */
   --duration-fast: 150ms;
   --duration-normal: 200ms;
   --duration-slow: 300ms;
 }
 
-/* 深色主题支持 */
+/* Dark theme support */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-primary: #3b82f6;
     --color-primary-hover: #2563eb;
     --color-secondary: #10b981;
     --color-secondary-hover: #059669;
-    
+
     --color-text-primary: #f9fafb;
     --color-text-secondary: #d1d5db;
     --color-text-muted: #9ca3af;
-    
+
     --color-bg-primary: #111827;
     --color-bg-secondary: #1f2937;
     --color-bg-tertiary: #374151;
-    
+
     --color-border-light: #374151;
     --color-border-medium: #4b5563;
     --color-border-dark: #6b7280;
@@ -76,7 +97,7 @@
 }
 
 /* ===================================================================
-   全局样式重置和基础设置
+   Global Style Reset and Base Settings
    =================================================================== */
 html,
 body,
@@ -87,31 +108,54 @@ div#root {
   width: 100vw;
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
-  overflow: hidden; /* 防止页面滚动 */
+  overflow: hidden;
+  /* Prevent page scrolling */
 }
 
-/* 确保应用占满全屏 */
+/* Ensure application takes full screen */
 div#root {
   display: flex;
   flex-direction: column;
 }
 
 /* ===================================================================
-   排版样式优化
+   Typography Optimization
    =================================================================== */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   margin: 0;
   font-weight: 600;
   line-height: 1.25;
   color: var(--color-text-primary);
 }
 
-h1 { font-size: 2.25rem; }
-h2 { font-size: 1.875rem; }
-h3 { font-size: 1.5rem; }
-h4 { font-size: 1.25rem; }
-h5 { font-size: 1.125rem; }
-h6 { font-size: 1rem; }
+h1 {
+  font-size: 2.25rem;
+}
+
+h2 {
+  font-size: 1.875rem;
+}
+
+h3 {
+  font-size: 1.5rem;
+}
+
+h4 {
+  font-size: 1.25rem;
+}
+
+h5 {
+  font-size: 1.125rem;
+}
+
+h6 {
+  font-size: 1rem;
+}
 
 p {
   margin: 0 0 1rem 0;
@@ -119,7 +163,7 @@ p {
 }
 
 /* ===================================================================
-   按钮样式增强
+   Button Style Enhancement
    =================================================================== */
 button {
   font-family: inherit;
@@ -137,7 +181,7 @@ button {
   white-space: nowrap;
 }
 
-/* 按钮尺寸变体 */
+/* Button size variants */
 .btn-sm {
   padding: 0.5rem 0.75rem;
   font-size: 0.75rem;
@@ -153,11 +197,12 @@ button {
   font-size: 1rem;
 }
 
-/* 按钮颜色变体 */
+/* Button color variants */
 .btn-primary {
   background-color: var(--color-primary);
   color: white;
 }
+
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
   transform: translateY(-1px);
@@ -168,6 +213,7 @@ button {
   background-color: var(--color-secondary);
   color: white;
 }
+
 .btn-secondary:hover:not(:disabled) {
   background-color: var(--color-secondary-hover);
   transform: translateY(-1px);
@@ -179,6 +225,7 @@ button {
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-medium);
 }
+
 .btn-outline:hover:not(:disabled) {
   background-color: var(--color-bg-tertiary);
   border-color: var(--color-border-dark);
@@ -188,12 +235,13 @@ button {
   background-color: transparent;
   color: var(--color-text-secondary);
 }
+
 .btn-ghost:hover:not(:disabled) {
   background-color: var(--color-bg-tertiary);
   color: var(--color-text-primary);
 }
 
-/* 按钮禁用状态 */
+/* Button disabled state */
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -202,9 +250,11 @@ button:disabled {
 }
 
 /* ===================================================================
-   表单元素样式
+   Form Element Styles
    =================================================================== */
-input, textarea, select {
+input,
+textarea,
+select {
   font-family: inherit;
   font-size: 0.875rem;
   line-height: 1.5;
@@ -217,13 +267,15 @@ input, textarea, select {
   outline: none;
 }
 
-input:focus, textarea:focus, select:focus {
+input:focus,
+textarea:focus,
+select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
 }
 
 /* ===================================================================
-   滚动条样式优化
+   Scrollbar Style Optimization
    =================================================================== */
 ::-webkit-scrollbar {
   width: 8px;
@@ -242,14 +294,14 @@ input:focus, textarea:focus, select:focus {
   background: var(--color-border-dark);
 }
 
-/* Firefox滚动条 */
+/* Firefox scrollbar */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-medium) var(--color-bg-secondary);
 }
 
 /* ===================================================================
-   工具类样式
+   Utility Classes
    =================================================================== */
 .glass-morphism {
   background: rgba(255, 255, 255, 0.25);
@@ -282,37 +334,44 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ===================================================================
-   动画定义
+   Animation Definitions
    =================================================================== */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { 
+  from {
     opacity: 0;
     transform: translateY(20px);
   }
-  to { 
+
+  to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
 @keyframes scaleIn {
-  from { 
+  from {
     opacity: 0;
     transform: scale(0.9);
   }
-  to { 
+
+  to {
     opacity: 1;
     transform: scale(1);
   }
 }
 
 /* ===================================================================
-   编辑器样式增强
+   Editor Style Enhancement
    =================================================================== */
 .ProseMirror {
   outline: none;
@@ -323,7 +382,9 @@ input:focus, textarea:focus, select:focus {
   min-height: 100%;
 }
 
-.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 {
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
 }
@@ -332,7 +393,8 @@ input:focus, textarea:focus, select:focus {
   margin-bottom: 1rem;
 }
 
-.ProseMirror ul, .ProseMirror ol {
+.ProseMirror ul,
+.ProseMirror ol {
   padding-left: 1.5rem;
   margin-bottom: 1rem;
 }
@@ -342,7 +404,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ===================================================================
-   响应式布局优化
+   Responsive Layout Optimization
    =================================================================== */
 @media (max-width: 1024px) {
   :root {
@@ -354,8 +416,8 @@ input:focus, textarea:focus, select:focus {
   :root {
     font-size: 13px;
   }
-  
-  /* 在小屏幕上隐藏侧边栏或使其覆盖 */
+
+  /* Hide sidebars or make them overlay on small screens */
   .mobile-overlay {
     position: fixed;
     top: 0;
@@ -368,7 +430,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ===================================================================
-   TipTap 编辑器样式
+   TipTap Editor Styles
    =================================================================== */
 .tiptap {
   min-height: 100%;
@@ -400,7 +462,7 @@ input:focus, textarea:focus, select:focus {
   margin: 0;
 }
 
-/* 确保编辑器内容区域有最小高度 */
+/* Ensure editor content area has minimum height */
 .ProseMirror {
   min-height: 400px;
   padding: 1rem;
@@ -411,15 +473,20 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ===================================================================
-   打印样式
+   Print Styles
    =================================================================== */
 @media print {
   .no-print {
     display: none !important;
   }
-  
+
   body {
     background: white !important;
     color: black !important;
   }
+}
+
+.editor-image {
+  width: 100%;
+  height: 100%;
 }
