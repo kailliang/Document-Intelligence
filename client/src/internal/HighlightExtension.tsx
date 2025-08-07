@@ -142,7 +142,7 @@ export const Highlight = Mark.create<HighlightOptions>({
           }
           temporaryDecorations = DecorationSet.empty;
           
-          // 强制重新渲染以清除高亮装饰
+          // Force re-render to clear highlight decorations
           view.dispatch(view.state.tr);
           
           return true;
@@ -162,6 +162,7 @@ export const Highlight = Mark.create<HighlightOptions>({
     ];
   },
 });
+
 
 // Helper function to find text in the document
 export function findTextInDocument(doc: any, searchText: string): { from: number; to: number } | null {

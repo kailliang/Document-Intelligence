@@ -4,29 +4,29 @@ from typing import List, Optional
 
 
 # ===================================================================
-# DocumentVersion相关的Pydantic模式
+# DocumentVersion related Pydantic schemas
 # ===================================================================
 
 class DocumentVersionBase(BaseModel):
     """
-    DocumentVersion的基础模式 - 包含版本的基本信息
+    DocumentVersion base schema - contains basic version information
     
-    为什么要分Base, Create, Read模式？
-    - Base: 共同字段，其他模式继承它
-    - Create: 创建版本时需要的字段
-    - Read: 从数据库读取时返回的字段（包含ID、时间戳等）
+    Why separate Base, Create, Read schemas?
+    - Base: common fields, other schemas inherit from it
+    - Create: fields needed when creating version
+    - Read: fields returned when reading from database (includes ID, timestamps, etc.)
     """
     content: str
     version_number: int
 
 
 class DocumentVersionCreate(DocumentVersionBase):
-    """创建新版本时使用的模式"""
+    """Schema used when creating new version"""
     pass
 
 
 class DocumentVersionRead(DocumentVersionBase):
-    """从数据库读取版本时返回的模式"""
+    """Schema returned when reading version from database"""
     model_config = ConfigDict(from_attributes=True)
     
     id: int
@@ -36,26 +36,26 @@ class DocumentVersionRead(DocumentVersionBase):
 
 
 # ===================================================================
-# Document相关的Pydantic模式
+# Document related Pydantic schemas
 # ===================================================================
 
 class DocumentBase(BaseModel):
-    """Document的基础模式"""
+    """Document base schema"""
     title: str
 
 
 class DocumentCreate(DocumentBase):
-    """创建新文档时使用的模式"""
+    """Schema used when creating new document"""
     pass
 
 
 class DocumentRead(DocumentBase):
     """
-    从数据库读取文档时返回的模式
+    Schema returned when reading document from database
     
-    为什么包含versions？
-    - 让前端能够获取文档的所有版本历史
-    - Optional[List[...]] 表示可选的版本列表
+    Why include versions?
+    - Allow frontend to get all version history of the document
+    - Optional[List[...]] indicates optional version list
     """
     model_config = ConfigDict(from_attributes=True)
     
@@ -64,34 +64,34 @@ class DocumentRead(DocumentBase):
     created_at: datetime
     updated_at: datetime
     
-    # 包含所有版本的列表 - 用于版本历史显示
+    # List containing all versions - for version history display
     versions: Optional[List[DocumentVersionRead]] = []
     
-    # 当前激活版本的详细信息
+    # Detailed information of current active version
     current_version: Optional[DocumentVersionRead] = None
 
 
 # ===================================================================
-# API请求/响应的专用模式
+# Dedicated schemas for API requests/responses
 # ===================================================================
 
 class DocumentWithCurrentVersion(BaseModel):
     """
-    返回文档及其当前版本内容的专用模式
-    这个模式专门用于编辑器，只返回必要的信息
+    Dedicated schema for returning document and its current version content
+    This schema is specifically for editor, only returns necessary information
     """
     id: int
     title: str
-    content: str  # 当前版本的内容
-    version_number: int  # 当前版本号
+    content: str  # Current version content
+    version_number: int  # Current version number
     last_modified: datetime
 
 
 class CreateVersionRequest(BaseModel):
-    """创建新版本的请求模式 - content现在是可选的，新版本默认为空"""
+    """Request schema for creating new version - content is now optional, new version defaults to empty"""
     content: Optional[str] = ""
 
 
 class SwitchVersionRequest(BaseModel):
-    """切换版本的请求模式"""
+    """Request schema for switching version"""
     version_number: int

@@ -92,14 +92,30 @@ An apparatus, comprising:
 
 Here are the rules you should check for: {RULES_TEXT}
 
-IMPORTANT: You must thoroughly review the entire document and identify ALL issues you find. For EACH piece of text that has issues, call the create_suggestion function ONCE, providing:
-1. The exact original text (originalText)
-2. A SINGLE comprehensive correction (replaceTo) that fixes ALL issues at once
-3. An array of all issues found in that text segment
+IMPORTANT: You must thoroughly review the entire document and identify ALL issues you find. For EACH problematic sentence or phrase, call the create_suggestion function ONCE, providing:
 
-For example, if "a eraser" has both antecedent basis issues (should be "an") and ambiguity issues (too vague), provide ONE correction like "an effective eraser" that addresses BOTH problems. This prevents conflicts when users accept suggestions.
+1. The originalText - Use ONLY a single sentence or short phrase (ideally one line, max 2-3 lines). Do NOT include entire multi-line paragraphs.
+2. The replaceTo - Provide the corrected version of that same sentence or phrase.
+3. An array of all issues found in that text segment.
 
-When you find issues, use the create_suggestion function to report them.
+CRITICAL TEXT MATCHING RULES:
+- Copy the exact text formatting including punctuation and spacing
+- If a claim has multiple issues across different sentences, create separate suggestions for each sentence
+- Make sure the originalText does NOT overlap with each other.
+
+EXAMPLES:
+- GOOD: originalText = "a device being designed to be placed near a neural cell"
+- BAD: originalText = entire multi-line claim with line breaks
+
+This approach ensures accurate text matching and allows users to accept individual corrections.
+
+When you find issues, use the create_suggestion function to report them. 
+IMPORTANT: Always evaluate your confidence level (0-1) for each suggestion based on:
+- How clear and unambiguous the issue is
+- How certain you are about the correction
+- The completeness of your proposed fix
+Use higher confidence (0.8-1.0) for obvious errors and lower confidence (0.5-0.7) for stylistic suggestions.
+
 For diagrams or flowcharts requested by the user, use the create_diagram function.
 """
 
@@ -115,7 +131,7 @@ FUNCTION_TOOLS = [
                 "properties": {
                     "originalText": {
                         "type": "string",
-                        "description": "The exact original text from the document that has the issue (word-for-word match)"
+                        "description": "A short, specific piece of text (single sentence or phrase) that contains the issue. Keep it as brief as possible while being specific enough for accurate matching. Avoid multi-line paragraphs."
                     },
                     "replaceTo": {
                         "type": "string", 
@@ -147,9 +163,15 @@ FUNCTION_TOOLS = [
                     "paragraph": {
                         "type": "integer",
                         "description": "The paragraph number (1-based index) where the issue occurs"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Your confidence level in this suggestion (0-1). Consider: clarity of the issue, certainty of the correction, and completeness of the fix. Use 0.9-1.0 for obvious errors, 0.7-0.9 for likely issues, 0.5-0.7 for possible improvements, below 0.5 for uncertain suggestions."
                     }
                 },
-                "required": ["originalText", "replaceTo", "issues", "paragraph"]
+                "required": ["originalText", "replaceTo", "issues", "paragraph", "confidence"]
             }
         }
     },
@@ -157,7 +179,7 @@ FUNCTION_TOOLS = [
         "type": "function", 
         "function": {
             "name": "create_diagram",
-            "description": "Generate a diagram using Mermaid syntax",
+            "description": "Generate a diagram using Mermaid syntax for chat responses",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -176,6 +198,36 @@ FUNCTION_TOOLS = [
                     }
                 },
                 "required": ["mermaid_syntax", "diagram_type"]
+            }
+        }
+    },
+    {
+        "type": "function", 
+        "function": {
+            "name": "insert_diagram",
+            "description": "Insert a Mermaid diagram into the document after specified text",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "insert_after_text": {
+                        "type": "string",
+                        "description": "The exact text in the document after which to insert the diagram"
+                    },
+                    "mermaid_syntax": {
+                        "type": "string",
+                        "description": "The Mermaid diagram syntax code"
+                    },
+                    "diagram_type": {
+                        "type": "string",
+                        "enum": ["flowchart", "sequence", "class", "er", "gantt", "pie", "mindmap"],
+                        "description": "The type of diagram to create"
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "The title or description of the diagram"
+                    }
+                },
+                "required": ["insert_after_text", "mermaid_syntax", "diagram_type"]
             }
         }
     }

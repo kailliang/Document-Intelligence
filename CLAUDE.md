@@ -9,11 +9,14 @@ This is a **Patent Review System** - a full-stack web application that enables u
 ## Architecture
 
 **Frontend (React + TypeScript)**
-- **TipTap** rich text editor for document editing with custom highlight extensions
+- **TipTap** rich text editor for document editing with custom highlight and mermaid extensions
+- **React Query** (@tanstack/react-query) for data fetching and state management
 - **WebSocket** connection for real-time AI suggestions and chat functionality
 - **Tab-based UI** with integrated suggestions and chat panels
 - **Tailwind CSS** with Emotion for styling
-- **Mermaid** for diagram generation in chat
+- **Mermaid** for diagram generation in chat and document insertion
+- **Turndown** for HTML to Markdown conversion
+- **Markdown-it** and **react-markdown** for Markdown parsing and rendering
 - **ProseMirror API** for precise text matching and highlighting
 
 **Backend (FastAPI + Python)**
@@ -26,13 +29,19 @@ This is a **Patent Review System** - a full-stack web application that enables u
 
 **Key Components:**
 - `client/src/App.tsx`: Main application state management and tab-based UI orchestration
-- `client/src/Document.tsx`: Document editor with WebSocket AI integration and real-time content sync
+- `client/src/internal/Editor.tsx`: Document editor with WebSocket AI integration and real-time content sync
 - `client/src/ChatPanel.tsx`: AI chat interface with streaming responses and Mermaid diagram support
 - `client/src/internal/HighlightExtension.tsx`: Custom TipTap extension for text highlighting and replacement
+- `client/src/internal/MermaidExtension.tsx`: Custom TipTap extension for Mermaid diagram insertion
+- `client/src/internal/LoadingOverlay.tsx`: Loading states and progress indicators
+- `client/src/types/html2pdf.d.ts`: Custom TypeScript definitions for html2pdf.js library
 - `server/app/__main__.py`: Core FastAPI routes and WebSocket handlers
 - `server/app/enhanced_endpoints.py`: Enhanced WebSocket and chat endpoints
 - `server/app/internal/ai_enhanced.py`: Enhanced AI with Function Calling for multiple suggestions
 - `server/app/internal/prompt_enhanced.py`: Specialized prompts for patent analysis with rule-based validation
+- `server/app/internal/mermaid_render.py`: Server-side Mermaid diagram rendering
+- `server/app/internal/pdf_export_simple.py`: Backend PDF generation with Playwright (simplified approach)
+- `server/app/internal/patent_chat_prompt.py`: Chat-specific prompts and responses
 - `server/app/models.py`: Database models for Document and DocumentVersion tables
 
 ## Development Commands
@@ -51,10 +60,48 @@ python -m app        # Start FastAPI server with uvicorn
 uvicorn app.__main__:app --reload  # Alternative with hot reload
 ```
 
-**Environment Setup:**
+**Quick Start:**
 ```bash
-./activate-backend.sh    # Activate conda environment (patent-backend)
-./activate-frontend.sh   # Setup frontend environment
+./start-dev.sh    # Start both frontend and backend services (uses conda environments)
+./stop-dev.sh     # Stop all services
+./logs-dev.sh     # Check service status
+```
+
+**Manual Setup (for debugging):**
+```bash
+# Backend (Terminal 1)
+conda activate patent-backend
+cd server && uvicorn app.__main__:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend (Terminal 2)  
+conda activate patent-frontend
+cd client && npm run dev
+```
+
+**Testing and Development:**
+```bash
+# Check for TypeScript errors
+cd client && npm run build
+
+# Lint TypeScript code
+cd client && npm run lint
+
+# Test API endpoints via FastAPI docs
+# Visit http://localhost:8000/docs after starting backend
+
+# Check Python syntax (no test suite currently exists)
+cd server && python -m py_compile app/**/*.py
+
+# Manual testing workflow:
+# 1. Start services: ./start-dev.sh
+# 2. Test document creation/editing in browser
+# 3. Test AI suggestions and chat functionality
+# 4. Test PDF export feature
+# 5. Test version management features
+
+# Debug WebSocket connections
+# Check browser console for WebSocket connection status
+# Backend logs will show WebSocket connection/disconnection events
 ```
 
 **Docker (from project root):**
@@ -63,8 +110,31 @@ docker-compose up --build    # Build and run both services
 ```
 
 **Development Scripts:**
-- `activate-backend.sh`: Backend setup script (conda environment: patent-backend)
-- `activate-frontend.sh`: Frontend setup script
+- `start-dev.sh`: One-click start for both frontend and backend (uses conda environments)
+- `stop-dev.sh`: Stop all development services
+- `logs-dev.sh`: Check service status and connectivity
+- `start-stop-dev.md`: Documentation for development script usage
+
+**Important Notes:**
+- Development scripts use conda environments (`patent-backend`, `patent-frontend`)
+- Services run on localhost:8000 (backend) and localhost:5173 (frontend)
+- FastAPI docs available at http://localhost:8000/docs
+- Ensure .env files are configured before starting services
+- **Security**: Never commit API keys to version control - use .env files and ensure .env.example contains placeholder values only
+
+**Environment Setup Requirements:**
+```bash
+# Create conda environments if they don't exist
+conda create -n patent-backend python=3.11
+conda create -n patent-frontend nodejs=18
+
+# Install dependencies
+conda activate patent-backend && cd server && pip install -r requirements.txt
+conda activate patent-frontend && cd client && npm install
+
+# Install Playwright browsers for PDF export
+conda activate patent-backend && playwright install chromium
+```
 
 ## Database Architecture
 
@@ -154,6 +224,8 @@ The system uses two AI processing modes:
 - **Smart Sorting**: Suggestions automatically sorted by severity (high→medium→low) and paragraph order
 - **Clean Highlighting**: Pure visual highlighting without text selection - only moves cursor position for scrolling
 - **Mermaid Diagram Support**: AI can generate flowcharts and system diagrams in chat
+- **PDF Export**: Document export functionality using html2pdf.js with custom TypeScript definitions
+- **Diagram Insertion**: AI can insert Mermaid diagrams directly into document content at specified locations
 
 ## Configuration Requirements
 
@@ -170,6 +242,16 @@ OPENAI_MODEL=gpt-4o
 VITE_USE_ENHANCED_WS=true
 ```
 
+**Dependencies:**
+- **Backend**: FastAPI, SQLAlchemy, OpenAI, BeautifulSoup4, WebSockets, Playwright
+- **Frontend**: React 18, TypeScript, TipTap, TailwindCSS, Mermaid, html2canvas, jsPDF, @tanstack/react-query, turndown, markdown-it, react-markdown
+- **Development**: Vite (frontend), Uvicorn (backend), ESLint
+
+**Critical Dependencies Notes:**
+- **PDF Export**: Uses Playwright (not WeasyPrint) for simplified PDF generation
+- **WebSocket**: Uses `react-use-websocket` for automatic reconnection handling
+- **Mermaid**: Version 11.9.0 for diagram rendering compatibility
+
 ## Important Technical Notes
 
 **WebSocket Implementation:**
@@ -183,6 +265,11 @@ VITE_USE_ENHANCED_WS=true
 - **Streaming Parser**: Custom StreamingJSONParser handles intermittent JSON formatting issues  
 - **Real-time Document Sync**: Editor content accessed via `editorRef.current.getHTML()` for current state
 - **Multiple Function Calls**: AI processes entire document and calls `create_suggestion` separately for each issue
+- **JSON Error Recovery**: Multiple fallback strategies for malformed AI responses:
+  - Attempt direct JSON parsing
+  - Extract JSON object with regex patterns
+  - Parse individual issue objects separately
+  - Log detailed error information for debugging
 
 **Text Processing and Highlighting:**
 - **HTML→Plain Text**: BeautifulSoup conversion with text validation
@@ -192,9 +279,11 @@ VITE_USE_ENHANCED_WS=true
 
 **Frontend State Management:**
 - **Unified AppState**: Single state object manages all application state including tabs, suggestions, and processing status
+- **React Query Integration**: TanStack React Query for efficient data fetching, caching, and synchronization
 - **Tab Navigation**: Right sidebar supports 'suggestions' and 'chat' tabs with `activeRightTab` state
 - **Real-time Updates**: WebSocket callbacks update UI state immediately
 - **Editor Instance Management**: `editorRef` provides access to current editor content independent of React props
+- **Markdown Support**: Turndown for HTML→Markdown conversion, Markdown-it for parsing, React-Markdown for rendering
 
 **Database Considerations:**
 - **SQLAlchemy Relationships**: Proper foreign key handling between Document and DocumentVersion tables
@@ -202,4 +291,64 @@ VITE_USE_ENHANCED_WS=true
 - **Cascade Deletion**: Versions deleted when documents are removed, with safety checks
 - **UTC Timestamps**: All datetime fields use UTC for consistency
 
-The codebase implements a complete patent review workflow with sophisticated real-time AI features, comprehensive version control, and a responsive user interface.
+**PDF Export System:**
+- **Backend PDF Generation**: Uses Playwright for simplified PDF generation (not WeasyPrint)
+- **Mermaid Chart Support**: Playwright renders Mermaid diagrams to SVG for perfect PDF integration
+- **API Endpoints**: `POST /api/documents/{id}/export/pdf` and `GET /api/downloads/{filename}`
+- **File Management**: Automatic cleanup of temporary PDF files after 24 hours
+- **Error Handling**: Comprehensive error messages and timeout protection
+- **Security**: Path validation and file type restrictions for safe downloads
+- **Mermaid SVG Processing**: 
+  - Removes foreignObject elements for compatibility
+  - Applies explicit styling to SVG elements
+  - Fixes text positioning and removes animations
+  - Handles wide diagrams with proper scaling
+
+## Common Debugging Scenarios
+
+**WebSocket Connection Issues:**
+```bash
+# Check if enhanced WebSocket is enabled
+cat client/.env | grep VITE_USE_ENHANCED_WS  # Should be "true"
+
+# Monitor WebSocket connections in browser
+# Open DevTools > Network > WS tab
+# Look for /ws/enhanced connection status
+```
+
+**AI Suggestion Not Working:**
+1. Check OpenAI API key is set: `cat server/.env | grep OPENAI_API_KEY`
+2. Verify WebSocket connection in browser console
+3. Check backend logs for AI processing errors
+4. Ensure document has text content (AI won't process empty documents)
+
+**PDF Export Failures:**
+```bash
+# Install Playwright browsers if missing
+conda activate patent-backend
+playwright install chromium
+
+# Check export directory permissions
+ls -la server/app/static/exports/
+
+# Monitor backend logs during export for detailed errors
+```
+
+**Database Issues:**
+```bash
+# Reset database if corrupted
+rm server/app/database.db
+# Restart backend to recreate database
+
+# Check database schema
+sqlite3 server/app/database.db ".schema"
+```
+
+**Port Conflicts:**
+```bash
+# Kill processes on specific ports
+lsof -ti:8000 | xargs kill -9  # Backend port
+lsof -ti:5173 | xargs kill -9  # Frontend port
+```
+
+The codebase implements a complete patent review workflow with sophisticated real-time AI features, comprehensive version control, high-quality PDF export capabilities, and a responsive user interface.
