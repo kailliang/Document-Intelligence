@@ -464,7 +464,7 @@ export default function ChatPanel({
           messages.map((msg, index) => (
             <div
               key={index}
-              className={`${msg.role === "user" ? "ml-auto" : "mr-auto"} max-w-[90%]`}
+              className={`${msg.role === "user" ? "ml-auto max-w-[90%]" : msg.type === "suggestion_cards" ? "mr-auto max-w-[98%]" : "mr-auto max-w-[90%]"}`}
             >
               {msg.role === "user" ? (
                 // User message
