@@ -1,6 +1,6 @@
-import Document from "./Document";
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import Document from "./Document";
 import LoadingOverlay from "./internal/LoadingOverlay";
 import Logo from "./assets/logo.png";
 import ChatPanel from "./ChatPanel";
@@ -313,144 +313,6 @@ function App() {
   };
 
 
-  /**
-   * Highlight paragraph in editor by matching text content
-   */
-  const highlightParagraphByText = useCallback((suggestion: AISuggestion) => {
-    console.log(`🎯 Starting text-based paragraph highlighting, severity: ${suggestion.severity}`);
-
-    if (!editorRef.current) {
-      console.warn('❌ Editor instance not found');
-      return;
-    }
-
-    const editor = editorRef.current;
-
-    // Use ProseMirror API for text matching and highlighting
-    if (suggestion.originalText || suggestion.text) {
-      const searchText = suggestion.originalText || suggestion.text || '';
-      const position = findTextInDocument(editor.state.doc, searchText);
-
-      if (position) {
-        // Clear previous highlights
-        editor.commands.clearTemporaryHighlights();
-        // Add temporary highlight
-        editor.commands.addTemporaryHighlight(position.from, position.to, suggestion.severity);
-
-        // Wait for highlight decoration to render then scroll to center position
-        setTimeout(() => {
-          if (editorRef.current) {
-            // Find highlight element through CSS selector
-            const highlightElement = editorRef.current.view.dom.querySelector(
-              `.temporary-highlight-${suggestion.severity}`
-            );
-
-            if (highlightElement) {
-              // Find the actual scroll container and check element visibility
-              const scrollContainer = findScrollContainer(highlightElement);
-              const containerRect = scrollContainer.getBoundingClientRect();
-              const elementRect = highlightElement.getBoundingClientRect();
-
-              // Calculate visibility relative to scroll container
-              const isVisible =
-                elementRect.top >= containerRect.top &&
-                elementRect.bottom <= containerRect.bottom;
-
-              // Add debug information
-              console.log('📊 Visibility debug info:', {
-                scrollContainer: scrollContainer.className || scrollContainer.tagName,
-                containerRect: { top: containerRect.top, bottom: containerRect.bottom, height: containerRect.height },
-                elementRect: { top: elementRect.top, bottom: elementRect.bottom, height: elementRect.height },
-                isVisible
-              });
-
-              // Directly judge visibility using viewport coordinates - simple and clear
-              const isInViewport =
-                elementRect.bottom > 0 &&
-                elementRect.top < window.innerHeight;
-
-              // Check if there's enough visible content (at least 20px)
-              const visibleHeight = Math.min(elementRect.bottom, window.innerHeight) - Math.max(elementRect.top, 0);
-              const hasEnoughVisible = visibleHeight >= 20;
-
-              console.log('📊 Simplified visibility check:', {
-                elementRect,
-                isInViewport,
-                visibleHeight,
-                hasEnoughVisible,
-                windowHeight: window.innerHeight
-              });
-
-              if (isInViewport && hasEnoughVisible) {
-                console.log('✅ Element is in viewport with sufficient visible content, no scrolling needed');
-              } else {
-                // Element not in viewport or insufficient visible content - need to scroll to reasonable position
-                console.log('📊 Element needs to be scrolled to visible position');
-
-                highlightElement.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'center',
-                  inline: 'nearest'
-                });
-                console.log('✅ Scrolled to center position');
-              }
-            } else {
-              console.warn('❌ Highlight element not found, using fallback scroll method');
-              // Fallback: set cursor position to trigger scrolling
-              editorRef.current.commands.setTextSelection(position.from);
-            }
-          }
-        }, 100); // Increase delay to ensure highlight decoration is rendered
-
-        console.log(`✅ Successfully highlighted text: "${searchText.substring(0, 50)}..."`);
-      } else {
-        console.warn(`❌ Text not found: "${searchText.substring(0, 50)}..."`);
-      }
-    }
-  }, []);
-
-  /**
-   * Handle suggestion card click
-   */
-  const handleSuggestionClick = useCallback((suggestion: AISuggestion, index: number) => {
-    console.log('🖱️ Clicked suggestion card:', suggestion);
-
-
-    // Use text highlighting
-    highlightParagraphByText(suggestion);
-
-    // Auto-clear highlights and active state after 3 seconds
-    highlightTimerRef.current = setTimeout(() => {
-      console.log('⏰ Auto-clear highlights after 3 seconds');
-      if (editorRef.current) {
-        editorRef.current.commands.clearTemporaryHighlights();
-      }
-      highlightTimerRef.current = null;
-    }, 3000);
-  }, [highlightParagraphByText]);
-
-
-  /**
-   * Find the actual scroll container for an element
-   */
-  const findScrollContainer = (element: Element): Element => {
-    let parent = element.parentElement;
-    while (parent) {
-      const style = getComputedStyle(parent);
-      if (
-        style.overflow === 'scroll' ||
-        style.overflow === 'auto' ||
-        style.overflowY === 'scroll' ||
-        style.overflowY === 'auto'
-      ) {
-        console.log('🔍 Found scroll container:', parent.className || parent.tagName);
-        return parent;
-      }
-      parent = parent.parentElement;
-    }
-    console.log('🔍 No scroll container found, using document.documentElement');
-    return document.documentElement;
-  };
 
   /**
    * Toggle sidebar visibility
@@ -678,89 +540,6 @@ function App() {
   }, [appState.currentDocument]);
 
 
-  /**
-   * Accept AI suggestion and apply to document
-   */
-  const acceptSuggestion = useCallback((suggestion: AISuggestion, _index: number) => {
-    console.log('✅ Accepting suggestion:', suggestion);
-
-    // Use new replacement function - allows replaceTo to be empty string (delete text)
-    if (suggestion.originalText && suggestion.replaceTo !== undefined && editorRef.current) {
-      const success = replaceText(editorRef.current, suggestion.originalText, suggestion.replaceTo);
-
-      if (success) {
-        console.log('✅ Text replacement successful');
-      } else {
-        console.warn('❌ Text to replace not found:', suggestion.originalText);
-        // If this error still occurs, backend deduplication hasn't fully resolved the issue
-      }
-    } else if (suggestion.text && suggestion.suggestion && editorRef.current) {
-      // Compatibility with old format: use text and suggestion fields
-      const success = replaceText(editorRef.current, suggestion.text, suggestion.suggestion);
-
-      if (!success) {
-        console.warn('❌ Text to replace not found:', suggestion.text);
-      }
-    }
-
-    // Remove from suggestions list - based on content matching not index, avoiding wrong deletion due to sorting
-    setAppState(prev => {
-      const newSuggestions = prev.aiSuggestions.filter(s =>
-        !(s.originalText === suggestion.originalText &&
-          s.paragraph === suggestion.paragraph &&
-          s.type === suggestion.type)
-      );
-      
-      // Update status if no suggestions remain
-      const newStatus = newSuggestions.length === 0 
-        ? 'AI standby' 
-        : `AI analysis complete, found ${newSuggestions.length} suggestions`;
-      
-      return {
-        ...prev,
-        aiSuggestions: newSuggestions,
-        aiProcessingStatus: newStatus
-      };
-    });
-  }, []);
-
-  /**
-   * Copy suggestion content to clipboard
-   */
-  const copySuggestion = useCallback((suggestion: AISuggestion) => {
-    const textToCopy = suggestion.replaceTo || suggestion.suggestion;
-    navigator.clipboard.writeText(textToCopy).then(() => {
-      console.log('📋 Copied to clipboard:', textToCopy);
-      // TODO: show success notification
-    }).catch(err => {
-      console.error('Copy failed:', err);
-    });
-  }, []);
-
-  /**
-   * Close/ignore suggestion
-   */
-  const closeSuggestion = useCallback((suggestion: AISuggestion) => {
-    console.log('❌ Dismissing suggestion:', suggestion.type, 'paragraph', suggestion.paragraph);
-    setAppState(prev => {
-      const newSuggestions = prev.aiSuggestions.filter(s =>
-        !(s.originalText === suggestion.originalText &&
-          s.paragraph === suggestion.paragraph &&
-          s.type === suggestion.type)
-      );
-      
-      // Update status if no suggestions remain
-      const newStatus = newSuggestions.length === 0 
-        ? 'AI standby' 
-        : `AI analysis complete, found ${newSuggestions.length} suggestions`;
-      
-      return {
-        ...prev,
-        aiSuggestions: newSuggestions,
-        aiProcessingStatus: newStatus
-      };
-    });
-  }, []);
 
   return (
     <div className="flex flex-col h-screen w-full bg-gray-50">
@@ -1060,25 +839,6 @@ function App() {
                 }
               </span>
 
-              {/* AI processing status */}
-              <span className={`flex items-center ${
-                appState.isAIProcessing 
-                  ? 'text-green-600'  // Running - green
-                  : appState.aiProcessingStatus.includes('connected') || appState.aiProcessingStatus.includes('standby') || appState.aiProcessingStatus.includes('ready')
-                    ? 'text-yellow-600'  // Standby - yellow
-                    : 'text-gray-500'    // Off - gray
-                }`}>
-                <div className={`w-2 h-2 rounded-full mr-2 ${
-                  appState.isAIProcessing 
-                    ? 'bg-green-400 animate-pulse'  // Running - green blinking
-                    : appState.aiProcessingStatus.includes('connected') || appState.aiProcessingStatus.includes('standby') || appState.aiProcessingStatus.includes('ready')
-                      ? 'bg-yellow-400'             // Standby - yellow
-                      : 'bg-gray-400'               // Off - gray
-                  }`}></div>
-                <span className="text-xs">
-                  🤖 {appState.aiProcessingStatus}
-                </span>
-              </span>
             </div>
             <div>
               {appState.currentDocument?.last_modified &&

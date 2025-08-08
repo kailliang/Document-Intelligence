@@ -246,54 +246,138 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                 }
                 await websocket.send_text(json.dumps(processing_msg))
                 
-                # TEMPORARY: Simple response without LangGraph workflow
-                # TODO: Replace with full LangGraph implementation
-                await asyncio.sleep(1)  # Simulate processing time
-                
-                # Determine intent based on keywords
-                user_lower = user_message.lower()
-                if any(keyword in user_lower for keyword in ["analyze", "review", "check", "improve", "suggest"]):
-                    # Document analysis request - return mock suggestion cards
-                    cards = [{
-                        "id": f"demo_{datetime.utcnow().timestamp()}",
-                        "type": "Structure & Format",
-                        "severity": "medium",
-                        "paragraph": 1,
-                        "description": "This is a demo suggestion. Full LangGraph integration is not yet implemented.",
-                        "original_text": "sample text",
-                        "replace_to": "improved sample text",
-                        "confidence": 0.85,
-                        "agent": "technical",
-                        "created_at": datetime.utcnow().isoformat()
-                    }]
+                # Real AI integration with intent detection
+                try:
+                    ai = get_ai_enhanced()
                     
-                    messages = [{
-                        "type": "suggestion_cards",
-                        "cards": cards
-                    }]
-                    intent_detected = "document_analysis"
-                    agents_used = ["demo"]
-                    
-                    # Save suggestion cards to chat history
-                    if document_id:
-                        await chat_manager.save_suggestion_cards(
-                            document_id, document_version, cards, agents_used
-                        )
-                else:
-                    # Regular chat response
-                    content = f"I received your message: '{user_message}'. This is a demo response. Full LangGraph integration is coming soon!"
+                    # Determine intent based on keywords
+                    user_lower = user_message.lower()
+                    if any(keyword in user_lower for keyword in ["analyze", "review", "check", "improve", "suggest"]) and document_content.strip():
+                        # Document analysis request - use AI to analyze document
+                        logger.info("🔍 Intent detected: Document analysis")
+                        
+                        # Convert HTML to plain text for AI analysis
+                        plain_text = html_to_plain_text(document_content)
+                        logger.info(f"📄 Document text length: {len(plain_text)}")
+                        
+                        if len(plain_text.strip()) < 10:
+                            # Document too short to analyze
+                            content = "The document appears to be empty or too short to analyze. Please add some content first."
+                            messages = [{
+                                "type": "text",
+                                "content": content
+                            }]
+                            intent_detected = "error"
+                            agents_used = ["system"]
+                        else:
+                            # Use AI to analyze document and generate suggestions
+                            response_chunks = []
+                            async for chunk in ai.review_document_with_functions(plain_text):
+                                if chunk:
+                                    response_chunks.append(chunk)
+                            
+                            full_response = "".join(response_chunks)
+                            
+                            try:
+                                # Parse AI response for suggestions
+                                ai_result = json.loads(full_response)
+                                issues = ai_result.get("issues", [])
+                                
+                                if issues:
+                                    # Convert AI issues to suggestion cards
+                                    cards = []
+                                    for issue in issues:
+                                        card = {
+                                            "id": f"ai_{datetime.utcnow().timestamp()}_{len(cards)}",
+                                            "type": issue.get("type", "General"),
+                                            "severity": issue.get("severity", "medium"),
+                                            "paragraph": issue.get("paragraph", 1),
+                                            "description": issue.get("description", "AI suggestion"),
+                                            "original_text": issue.get("originalText", issue.get("text", "")),
+                                            "replace_to": issue.get("replaceTo", issue.get("suggestion", "")),
+                                            "confidence": issue.get("confidence", 0.8),
+                                            "agent": "ai_enhanced",
+                                            "created_at": datetime.utcnow().isoformat()
+                                        }
+                                        cards.append(card)
+                                    
+                                    messages = [{
+                                        "type": "suggestion_cards",
+                                        "cards": cards
+                                    }]
+                                    intent_detected = "document_analysis"
+                                    agents_used = ["ai_enhanced"]
+                                    
+                                    logger.info(f"✅ Generated {len(cards)} suggestion cards from AI")
+                                else:
+                                    # No issues found
+                                    content = "Great! I've analyzed your document and found no significant issues. The document appears to be well-structured."
+                                    messages = [{
+                                        "type": "text",
+                                        "content": content
+                                    }]
+                                    intent_detected = "document_analysis"
+                                    agents_used = ["ai_enhanced"]
+                                    
+                            except json.JSONDecodeError as e:
+                                logger.error(f"❌ AI response parsing failed: {e}")
+                                content = "I've analyzed your document, but encountered an issue processing the results. Please try again."
+                                messages = [{
+                                    "type": "text",
+                                    "content": content
+                                }]
+                                intent_detected = "error"
+                                agents_used = ["ai_enhanced"]
+                                
+                        # Save to chat history
+                        if document_id:
+                            if messages[0]["type"] == "suggestion_cards":
+                                await chat_manager.save_suggestion_cards(
+                                    document_id, document_version, messages[0]["cards"], agents_used
+                                )
+                            else:
+                                await chat_manager.save_assistant_message(
+                                    document_id, document_version, messages[0]["content"], agents_used
+                                )
+                    else:
+                        # Regular chat response - use AI chat functionality
+                        logger.info("💬 Intent detected: Chat conversation")
+                        
+                        # Build message history for context
+                        chat_messages = [{"role": "user", "content": user_message}]
+                        
+                        # Get AI chat response
+                        response_chunks = []
+                        async for chunk in ai.chat_with_document_context(chat_messages, document_content):
+                            if chunk and not chunk.startswith("DIAGRAM_INSERT:"):
+                                response_chunks.append(chunk)
+                        
+                        ai_response = "".join(response_chunks).strip()
+                        if not ai_response:
+                            ai_response = "I'm here to help! You can ask me questions about your document or request an analysis."
+                        
+                        messages = [{
+                            "type": "text",
+                            "content": ai_response
+                        }]
+                        intent_detected = "chat"
+                        agents_used = ["ai_enhanced"]
+                        
+                        # Save assistant message to chat history
+                        if document_id:
+                            await chat_manager.save_assistant_message(
+                                document_id, document_version, ai_response, agents_used
+                            )
+                            
+                except Exception as e:
+                    logger.error(f"❌ AI processing error: {e}")
+                    content = "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."
                     messages = [{
                         "type": "text",
                         "content": content
                     }]
-                    intent_detected = "casual_chat"
-                    agents_used = ["demo"]
-                    
-                    # Save assistant message to chat history
-                    if document_id:
-                        await chat_manager.save_assistant_message(
-                            document_id, document_version, content, agents_used
-                        )
+                    intent_detected = "error"
+                    agents_used = ["system"]
                 
                 # Send response to client
                 response = {
