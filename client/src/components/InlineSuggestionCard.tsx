@@ -108,9 +108,6 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
             <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-center min-w-0 truncate">
               {suggestion.type}
             </span>
-            <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded capitalize shrink-0">
-              {suggestion.agent}
-            </span>
           </div>
 
           {/* Problem description */}
@@ -164,24 +161,24 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
           <div className="flex gap-2 pt-2 border-t">
             <button
               onClick={() => onAccept(suggestion.id)}
-              className="flex-1 px-4 py-2 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors min-w-0"
+              className="flex-1 px-3 py-2 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
               title="Accept suggestion and apply to document"
             >
-              <span className="block truncate">✅ Accept</span>
+              ✅ Accept
             </button>
             <button
               onClick={() => onCopy(suggestion.id)}
-              className="flex-1 px-4 py-2 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors min-w-0"
+              className="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
               title="Copy suggestion content"
             >
-              <span className="block truncate">📋 Copy</span>
+              📋 Copy
             </button>
             <button
               onClick={() => onDismiss(suggestion.id)}
-              className="flex-1 px-4 py-2 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors min-w-0"
+              className="flex-1 px-3 py-2 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
               title="Dismiss this suggestion"
             >
-              <span className="block truncate">❌ Dismiss</span>
+              ❌ Dismiss
             </button>
           </div>
         </div>
