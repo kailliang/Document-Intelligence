@@ -839,6 +839,12 @@ function App() {
                 }
               </span>
 
+              {/* AI Assistant status */}
+              <span className="flex items-center text-blue-600">
+                <div className="w-2 h-2 rounded-full mr-2 bg-blue-400"></div>
+                AI Ready
+              </span>
+
             </div>
             <div>
               {appState.currentDocument?.last_modified &&
@@ -898,6 +904,7 @@ function App() {
                   onInsertMermaid={handleInsertMermaid}
                   documentId={appState.currentDocument?.id}
                   documentVersion={`v${appState.currentDocument?.version_number || 1}.0`}
+                  editorRef={editorRef}
                 />
               </div>
             </div>

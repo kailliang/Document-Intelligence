@@ -18,6 +18,8 @@ interface InlineSuggestionCardProps {
   onAccept: (cardId: string) => void;
   onDismiss: (cardId: string) => void;
   onCopy: (cardId: string) => void;
+  onHighlight?: (suggestion: Suggestion) => void;
+  highlightedCardId?: string;
   className?: string;
 }
 
@@ -26,6 +28,8 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   onAccept,
   onDismiss,
   onCopy,
+  onHighlight,
+  highlightedCardId,
   className = ''
 }) => {
   if (!suggestions || suggestions.length === 0) {
@@ -95,55 +99,68 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
       {suggestions.map((suggestion) => (
         <div
           key={suggestion.id}
-          className={`p-3 rounded-lg border ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full`}
+          className={`p-3 rounded-lg border ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full ${
+            highlightedCardId === suggestion.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
+          }`}
         >
-          {/* Suggestion header */}
-          <div className="flex items-center gap-1 mb-3 overflow-hidden">
+          {/* Clickable content area for highlighting */}
+          <div
+            className={`cursor-pointer ${onHighlight ? 'hover:bg-opacity-80' : ''}`}
+            onClick={() => onHighlight && onHighlight(suggestion)}
+            title={onHighlight ? "Click to highlight text in document" : undefined}
+          >
+            {/* Suggestion header */}
+            <div className="flex items-center gap-1 mb-3 overflow-hidden">
+              {highlightedCardId === suggestion.id && (
+                <span className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-medium animate-pulse shrink-0">
+                  Highlighted
+                </span>
+              )}
             <span className="text-xs font-medium text-gray-600 shrink-0">
               P{suggestion.paragraph}
             </span>
             <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${getSeverityBadgeColor(suggestion.severity)} shrink-0`}>
               {getSeverityLabel(suggestion.severity)}
             </span>
-            <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-center min-w-0 truncate flex-1">
-              {suggestion.type}
-            </span>
-          </div>
+              <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-center min-w-0 truncate flex-1">
+                {suggestion.type}
+              </span>
+            </div>
 
-          {/* Problem description */}
-          <p className="text-sm text-gray-700 mb-3 leading-relaxed">
-            {suggestion.description}
-          </p>
+            {/* Problem description */}
+            <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+              {suggestion.description}
+            </p>
 
-
-          {/* AI suggestion */}
-          {suggestion.replace_to && (
-            <div className="mb-3">
-              <p className="text-sm font-medium text-green-600 mb-1">💡 Suggestion:</p>
-              
-              {/* Confidence display */}
-              <div className="flex items-center gap-2 mb-2 ml-4">
-                <span className="text-xs text-gray-600">Confidence:</span>
-                <div className="flex items-center gap-1">
-                  <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-300 ${getConfidenceBarColor(suggestion.confidence)}`}
-                      style={{ width: `${suggestion.confidence * 100}%` }}
-                    />
+            {/* AI suggestion */}
+            {suggestion.replace_to && (
+              <div className="mb-3">
+                <p className="text-sm font-medium text-green-600 mb-1">💡 Suggestion:</p>
+                
+                {/* Confidence display */}
+                <div className="flex items-center gap-2 mb-2 ml-4">
+                  <span className="text-xs text-gray-600">Confidence:</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${getConfidenceBarColor(suggestion.confidence)}`}
+                        style={{ width: `${suggestion.confidence * 100}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}>
+                      {(suggestion.confidence * 100).toFixed(0)}%
+                    </span>
                   </div>
-                  <span className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}>
-                    {(suggestion.confidence * 100).toFixed(0)}%
-                  </span>
+                </div>
+                
+                <div className="bg-white p-3 rounded border">
+                  <p className="text-sm text-gray-700 leading-relaxed font-mono">
+                    {suggestion.replace_to}
+                  </p>
                 </div>
               </div>
-              
-              <div className="bg-white p-3 rounded border">
-                <p className="text-sm text-gray-700 leading-relaxed font-mono">
-                  {suggestion.replace_to}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Action buttons */}
           <div className="flex gap-1 pt-2">
