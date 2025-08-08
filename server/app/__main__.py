@@ -567,19 +567,43 @@ def delete_version(
 
 # Try to import enhanced endpoints (if available)
 try:
-    from app.enhanced_endpoints import websocket_enhanced_endpoint, chat_with_ai, ChatRequest
+    from app.enhanced_endpoints_simple import (
+        websocket_enhanced_endpoint, 
+        chat_with_ai, 
+        ChatRequest,
+        unified_chat_websocket_endpoint,
+        load_chat_history_for_version,
+        handle_suggestion_card_action
+    )
     
-    # Register enhanced WebSocket endpoint
+    # Register legacy enhanced WebSocket endpoint (for backward compatibility)
     @app.websocket("/ws/enhanced")
     async def enhanced_websocket_route(websocket: WebSocket):
         await websocket_enhanced_endpoint(websocket)
+    
+    # Register new unified chat WebSocket endpoint
+    @app.websocket("/ws/chat")
+    async def unified_chat_websocket_route(websocket: WebSocket):
+        await unified_chat_websocket_endpoint(websocket)
     
     # Register chat API endpoint
     @app.post("/api/chat")
     async def chat_endpoint(request: ChatRequest):
         return await chat_with_ai(request)
     
-    logger.info("✅ Enhanced endpoints registered")
+    # Register chat history endpoints
+    @app.get("/api/chat/history/{document_id}/{version_number}")
+    async def get_chat_history(document_id: int, version_number: str):
+        return await load_chat_history_for_version(document_id, version_number)
+    
+    @app.post("/api/chat/suggestion-action/{document_id}/{version_number}/{message_id}")
+    async def suggestion_card_action(document_id: int, version_number: str, 
+                                   message_id: int, card_id: str, action: str):
+        return await handle_suggestion_card_action(
+            document_id, version_number, message_id, card_id, action
+        )
+    
+    logger.info("✅ Enhanced endpoints registered (including unified chat)")
 except ImportError as e:
     logger.warning(f"⚠️ Enhanced endpoints not available: {e}")
 

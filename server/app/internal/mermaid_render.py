@@ -560,3 +560,91 @@ class MermaidRenderer:
             logger.warning(f"SVG scaling improvement failed: {e}")
         
         return svg_content
+
+
+# LangGraph node function for mermaid generation
+async def generate_mermaid_node(state: dict) -> dict:
+    """
+    LangGraph node function for generating Mermaid diagrams.
+    
+    Args:
+        state: Current workflow state containing user request
+        
+    Returns:
+        Updated state with mermaid diagram response
+    """
+    try:
+        logger.info("Generating Mermaid diagram")
+        
+        user_input = state.get("user_input", "")
+        openai_client = state.get("openai_client")
+        
+        if not openai_client:
+            return {
+                **state,
+                "messages": [{
+                    "type": "text",
+                    "content": "I'm unable to generate diagrams at the moment. Please try again later.",
+                    "timestamp": "2024-01-01T00:00:00Z"
+                }],
+                "intent_detected": "mermaid_diagram"
+            }
+        
+        # Generate Mermaid code using AI
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            temperature=0.3,
+            messages=[
+                {
+                    "role": "system",
+                    "content": """You are a Mermaid diagram expert. Create Mermaid diagrams based on user requests.
+                    
+                    Guidelines:
+                    - Use proper Mermaid syntax
+                    - Keep diagrams clear and readable
+                    - Choose appropriate diagram types (flowchart, sequence, class, etc.)
+                    - Include meaningful labels and connections
+                    - Return only the Mermaid code without markdown formatting
+                    
+                    Common diagram types:
+                    - flowchart TD/LR for processes and workflows
+                    - sequenceDiagram for interactions
+                    - classDiagram for system structures
+                    - gitgraph for version control
+                    """
+                },
+                {"role": "user", "content": user_input}
+            ]
+        )
+        
+        mermaid_code = response.choices[0].message.content.strip()
+        
+        # Clean up the response (remove markdown formatting if present)
+        import re
+        mermaid_code = re.sub(r'^```(?:mermaid)?\n', '', mermaid_code)
+        mermaid_code = re.sub(r'\n```$', '', mermaid_code)
+        
+        # Return response with mermaid diagram
+        return {
+            **state,
+            "messages": [{
+                "type": "text",
+                "content": f"Here's the diagram you requested:\n\n```mermaid\n{mermaid_code}\n```",
+                "timestamp": "2024-01-01T00:00:00Z"
+            }],
+            "intent_detected": "mermaid_diagram",
+            "mermaid_code": mermaid_code
+        }
+        
+    except Exception as e:
+        logger.error(f"Mermaid generation failed: {e}")
+        return {
+            **state,
+            "messages": [{
+                "type": "text",
+                "content": "I encountered an issue generating the diagram. Could you please rephrase your request?",
+                "timestamp": "2024-01-01T00:00:00Z"
+            }],
+            "intent_detected": "mermaid_diagram",
+            "error": str(e)
+        }
