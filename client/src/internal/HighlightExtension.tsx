@@ -34,9 +34,9 @@ declare module '@tiptap/core' {
   }
 }
 
-// Store for temporary decorations
-let temporaryDecorations = DecorationSet.empty;
-let highlightTimeout: number | null = null;
+// Store for temporary decorations - using WeakMap to prevent memory leaks
+const editorDecorations = new WeakMap<any, DecorationSet>();
+const editorTimeouts = new WeakMap<any, number>();
 
 export const Highlight = Mark.create<HighlightOptions>({
   name: 'highlight',
@@ -106,10 +106,12 @@ export const Highlight = Mark.create<HighlightOptions>({
         },
       addTemporaryHighlight:
         (from: number, to: number, severity: string) =>
-        ({ view, state }) => {
-          // Clear previous timeout
-          if (highlightTimeout) {
-            clearTimeout(highlightTimeout);
+        ({ view, state, editor }) => {
+          // Clear previous timeout for this editor instance
+          const existingTimeout = editorTimeouts.get(editor);
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+            editorTimeouts.delete(editor);
           }
 
           // Create decoration
@@ -118,32 +120,37 @@ export const Highlight = Mark.create<HighlightOptions>({
             'data-severity': severity,
           });
 
-          // Update decorations
-          temporaryDecorations = DecorationSet.create(state.doc, [decoration]);
+          // Update decorations using plugin state
+          const newDecorations = DecorationSet.create(state.doc, [decoration]);
+          const tr = state.tr.setMeta('addHighlight', newDecorations);
           
-          // Force re-render
-          view.dispatch(state.tr);
+          // Dispatch transaction to update plugin state
+          view.dispatch(tr);
 
-          // Set timeout to clear after 3 seconds
-          highlightTimeout = setTimeout(() => {
-            temporaryDecorations = DecorationSet.empty;
-            view.dispatch(state.tr);
-            highlightTimeout = null;
-          }, 3000);
+          // Set timeout to clear after 5 seconds (increased for better UX)
+          const timeoutId = setTimeout(() => {
+            const clearTr = view.state.tr.setMeta('clearHighlight', true);
+            view.dispatch(clearTr);
+            editorTimeouts.delete(editor);
+          }, 5000);
+          
+          editorTimeouts.set(editor, timeoutId);
 
           return true;
         },
       clearTemporaryHighlights:
         () =>
-        ({ view }) => {
-          if (highlightTimeout) {
-            clearTimeout(highlightTimeout);
-            highlightTimeout = null;
+        ({ view, editor }) => {
+          // Clear timeout for this editor instance
+          const existingTimeout = editorTimeouts.get(editor);
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+            editorTimeouts.delete(editor);
           }
-          temporaryDecorations = DecorationSet.empty;
           
-          // Force re-render to clear highlight decorations
-          view.dispatch(view.state.tr);
+          // Clear decorations using plugin state
+          const tr = view.state.tr.setMeta('clearHighlight', true);
+          view.dispatch(tr);
           
           return true;
         },
@@ -154,8 +161,27 @@ export const Highlight = Mark.create<HighlightOptions>({
     return [
       new Plugin({
         props: {
-          decorations(_state) {
-            return temporaryDecorations;
+          decorations(state: any) {
+            // Get decorations from the current plugin state
+            // We'll store decorations in plugin state instead of WeakMap for the plugin
+            return this.getState(state) || DecorationSet.empty;
+          },
+        },
+        state: {
+          init() {
+            return DecorationSet.empty;
+          },
+          apply(tr: any, decorations: DecorationSet) {
+            // Handle highlight metadata
+            if (tr.getMeta('addHighlight')) {
+              return tr.getMeta('addHighlight');
+            }
+            if (tr.getMeta('clearHighlight')) {
+              return DecorationSet.empty;
+            }
+            
+            // Map existing decorations through transaction
+            return decorations.map(tr.mapping, tr.doc);
           },
         },
       }),
@@ -164,27 +190,73 @@ export const Highlight = Mark.create<HighlightOptions>({
 });
 
 
-// Helper function to find text in the document
+// Helper function to find text in the document with enhanced matching
 export function findTextInDocument(doc: any, searchText: string): { from: number; to: number } | null {
   let result: { from: number; to: number } | null = null;
-  const normalizedSearch = searchText.toLowerCase().trim();
+  
+  // Normalize search text - handle HTML entities and whitespace
+  const normalizedSearch = searchText
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
 
+  // First try: exact match
   doc.descendants((node: any, pos: number) => {
-    if (result) return false; // Already found
+    if (result) return false;
 
     if (node.isText && node.text) {
-      const normalizedText = node.text.toLowerCase();
+      const normalizedText = node.text
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+        
       const index = normalizedText.indexOf(normalizedSearch);
       
       if (index !== -1) {
         result = {
           from: pos + index,
-          to: pos + index + searchText.length,
+          to: pos + index + normalizedSearch.length,
         };
-        return false; // Stop searching
+        return false;
       }
     }
   });
+
+  // Second try: fuzzy matching for shorter text (first 30 chars)
+  if (!result && normalizedSearch.length > 10) {
+    const shortSearch = normalizedSearch.substring(0, 30);
+    
+    doc.descendants((node: any, pos: number) => {
+      if (result) return false;
+
+      if (node.isText && node.text) {
+        const normalizedText = node.text
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
+          
+        const index = normalizedText.indexOf(shortSearch);
+        
+        if (index !== -1) {
+          result = {
+            from: pos + index,
+            to: pos + index + shortSearch.length,
+          };
+          return false;
+        }
+      }
+    });
+  }
 
   return result;
 }
