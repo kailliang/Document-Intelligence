@@ -95,17 +95,17 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
       {suggestions.map((suggestion) => (
         <div
           key={suggestion.id}
-          className={`p-3 rounded-lg border-l-4 ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full`}
+          className={`p-3 rounded-lg border ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full`}
         >
           {/* Suggestion header */}
-          <div className="flex items-center gap-1 mb-3 flex-wrap">
+          <div className="flex items-center gap-1 mb-3 overflow-hidden">
             <span className="text-xs font-medium text-gray-600 shrink-0">
               P{suggestion.paragraph}
             </span>
             <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${getSeverityBadgeColor(suggestion.severity)} shrink-0`}>
               {getSeverityLabel(suggestion.severity)}
             </span>
-            <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-center min-w-0 truncate">
+            <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded text-center min-w-0 truncate flex-1">
               {suggestion.type}
             </span>
           </div>
@@ -115,18 +115,6 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
             {suggestion.description}
           </p>
 
-          {/* Original text preview */}
-          {suggestion.original_text && (
-            <div className="mb-3">
-              <p className="text-xs font-medium text-gray-600 mb-1">Original text:</p>
-              <div className="bg-gray-100 p-2 rounded text-sm text-gray-700 font-mono">
-                {suggestion.original_text.length > 100 
-                  ? suggestion.original_text.substring(0, 100) + '...'
-                  : suggestion.original_text
-                }
-              </div>
-            </div>
-          )}
 
           {/* AI suggestion */}
           {suggestion.replace_to && (
@@ -158,24 +146,24 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2 pt-2 border-t">
+          <div className="flex gap-1 pt-2">
             <button
               onClick={() => onAccept(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[10px] font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
+              className="flex-1 px-2 py-1 text-[9px] font-medium text-white bg-green-600 hover:bg-green-700 rounded-sm transition-colors"
               title="Accept suggestion and apply to document"
             >
               ✅ Accept
             </button>
             <button
               onClick={() => onCopy(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[10px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+              className="flex-1 px-2 py-1 text-[9px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-sm transition-colors"
               title="Copy suggestion content"
             >
               📋 Copy
             </button>
             <button
               onClick={() => onDismiss(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[10px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+              className="flex-1 px-2 py-1 text-[9px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-sm transition-colors"
               title="Dismiss this suggestion"
             >
               ❌ Dismiss
