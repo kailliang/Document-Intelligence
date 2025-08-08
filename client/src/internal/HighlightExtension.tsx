@@ -35,7 +35,6 @@ declare module '@tiptap/core' {
 }
 
 // Store for temporary decorations - using WeakMap to prevent memory leaks
-const editorDecorations = new WeakMap<any, DecorationSet>();
 const editorTimeouts = new WeakMap<any, number>();
 
 export const Highlight = Mark.create<HighlightOptions>({
