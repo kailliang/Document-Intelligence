@@ -600,7 +600,7 @@ try:
     async def suggestion_card_action(document_id: int, version_number: str, 
                                    message_id: int, card_id: str, action: str):
         return await handle_suggestion_card_action(
-            document_id, version_number, message_id, card_id, action
+            message_id, card_id, action
         )
     
     logger.info("✅ Enhanced endpoints registered (including unified chat)")

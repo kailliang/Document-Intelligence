@@ -8,11 +8,21 @@ import { findTextInDocument, replaceText } from './internal/HighlightExtension';
 mermaid.initialize({ startOnLoad: true, theme: 'default' });
 
 interface ChatMessage {
+  id?: string; // Database message ID for API calls
   role: "user" | "assistant";
   content: string;
   timestamp?: Date;
-  type?: "text" | "suggestion_cards";
+  type?: "text" | "suggestion_cards" | "suggestion_summary";
   suggestions?: Suggestion[];
+  summary?: SuggestionSummary;
+}
+
+interface SuggestionSummary {
+  total_count: number;
+  severity_counts: {high: number, medium: number, low: number};
+  type_counts: Record<string, number>;
+  accepted_count: number;
+  dismissed_count: number;
 }
 
 interface Suggestion {
@@ -137,10 +147,64 @@ export default function ChatPanel({
 
   // WebSocket connection to unified chat endpoint
   const socketUrl = `ws://localhost:8000/ws/chat`;
-  const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl, {
-    shouldReconnect: () => true,
-    reconnectInterval: 3000,
-    reconnectAttempts: 10,
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const maxReconnectAttempts = 10;
+  
+  const { sendJsonMessage, lastJsonMessage, readyState, getWebSocket } = useWebSocket(socketUrl, {
+    shouldReconnect: (closeEvent) => {
+      // Implement exponential backoff and error handling
+      console.log('WebSocket closed:', closeEvent);
+      
+      // Don't reconnect if it's a permanent error (4000-4999 range)
+      if (closeEvent?.code >= 4000 && closeEvent?.code < 5000) {
+        console.error('Permanent WebSocket error, not reconnecting:', closeEvent.reason);
+        setConnectionError(`Connection failed: ${closeEvent.reason}`);
+        return false;
+      }
+      
+      // Stop reconnecting after max attempts
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        console.error('Max reconnection attempts reached');
+        setConnectionError('Unable to connect after multiple attempts. Please refresh the page.');
+        return false;
+      }
+      
+      setReconnectAttempts(prev => prev + 1);
+      setConnectionError(`Reconnecting... (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+      return true;
+    },
+    reconnectInterval: (attemptNumber) => {
+      // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+      return Math.min(1000 * Math.pow(2, attemptNumber), 30000);
+    },
+    reconnectAttempts: maxReconnectAttempts,
+    onOpen: () => {
+      console.log('WebSocket connected successfully');
+      setConnectionError(null);
+      setReconnectAttempts(0);
+    },
+    onClose: (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
+      if (event.code !== 1000) { // 1000 is normal closure
+        setConnectionError('Connection lost. Attempting to reconnect...');
+      }
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error);
+      setConnectionError('Connection error occurred');
+    },
+    retryOnError: true,
+    filter: (message) => {
+      // Validate incoming messages
+      try {
+        const data = JSON.parse(message.data);
+        return data && typeof data === 'object';
+      } catch {
+        console.warn('Received invalid JSON message, filtering out');
+        return false;
+      }
+    },
   });
 
   // Auto-scroll to latest message
@@ -167,20 +231,36 @@ export default function ChatPanel({
           // Convert loaded messages to ChatMessage format
           const loadedMessages: ChatMessage[] = data.messages.map((msg: any) => {
             const baseMessage: ChatMessage = {
+              id: msg.id?.toString(), // Include database ID
               role: msg.type === 'user' ? 'user' : 'assistant',
               content: msg.content,
               timestamp: new Date(msg.timestamp),
-              type: msg.type === 'suggestion_cards' ? 'suggestion_cards' : 'text'
+              type: msg.type === 'suggestion_cards' ? 'suggestion_cards' : 
+                    msg.type === 'suggestion_summary' ? 'suggestion_summary' : 'text'
             };
 
             // Add suggestions if this is a suggestion_cards message
             if (msg.type === 'suggestion_cards' && msg.suggestion_cards) {
-              baseMessage.suggestions = msg.suggestion_cards;
-              // TODO: Filter out cards that have been acted upon using metadata
+              // Filter out cards that have been acted upon (accepted/dismissed)
+              const activeCards = msg.suggestion_cards.filter((card: any) => {
+                // Check if this card has been acted upon
+                const cardActions = msg.metadata?.card_actions || {};
+                const cardStatus = cardActions[card.id];
+                // Only show cards that haven't been acted upon
+                return !cardStatus || (cardStatus !== 'accepted' && cardStatus !== 'dismissed');
+              });
+              
+              // Only include suggestions if there are active cards
+              if (activeCards.length > 0) {
+                baseMessage.suggestions = activeCards;
+              } else {
+                // No active cards, don't include this message
+                return null;
+              }
             }
 
             return baseMessage;
-          });
+          }).filter((msg: ChatMessage | null) => msg !== null) as ChatMessage[]; // Filter out null messages (empty suggestion card sets)
           
           setMessages(loadedMessages);
           console.log(`Loaded ${loadedMessages.length} chat messages`);
@@ -232,17 +312,30 @@ export default function ChatPanel({
             if (aiMessage.type === 'text') {
               // Regular text message
               const assistantMessage: ChatMessage = {
+                id: aiMessage.message_id?.toString(),
                 role: "assistant",
                 content: aiMessage.content,
                 timestamp: new Date(),
                 type: "text"
               };
               setMessages(prev => [...prev, assistantMessage]);
+            } else if (aiMessage.type === 'suggestion_summary') {
+              // Summary message (always persistent)
+              const summaryMessage: ChatMessage = {
+                id: aiMessage.message_id?.toString(),
+                role: "assistant", 
+                content: aiMessage.content,
+                timestamp: new Date(),
+                type: "suggestion_summary",
+                summary: aiMessage.summary
+              };
+              setMessages(prev => [...prev, summaryMessage]);
             } else if (aiMessage.type === 'suggestion_cards' && aiMessage.cards) {
               // Suggestion cards message
               const suggestionMessage: ChatMessage = {
+                id: aiMessage.message_id?.toString(),
                 role: "assistant",
-                content: "Here are my suggestions for improving your document:",
+                content: "详细建议：",
                 timestamp: new Date(),
                 type: "suggestion_cards",
                 suggestions: aiMessage.cards
@@ -291,9 +384,26 @@ export default function ChatPanel({
     };
   }, []);
 
-  // Send message via WebSocket
+  // Send message via WebSocket with retry logic
   const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading || readyState !== ReadyState.OPEN) return;
+    if (!inputMessage.trim() || isLoading) return;
+
+    // Check connection state and handle accordingly
+    if (readyState === ReadyState.CONNECTING) {
+      // Wait for connection with timeout
+      console.log('WebSocket is connecting, waiting...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      if (readyState !== ReadyState.OPEN) {
+        setConnectionError('Connection timeout. Please try again.');
+        return;
+      }
+    }
+    
+    if (readyState !== ReadyState.OPEN) {
+      setConnectionError('Not connected. Please wait for reconnection.');
+      return;
+    }
 
     const userMessage: ChatMessage = {
       role: "user",
@@ -303,6 +413,7 @@ export default function ChatPanel({
 
     // Add user message immediately
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = inputMessage;
     setInputMessage("");
     setIsLoading(true);
 
@@ -310,22 +421,39 @@ export default function ChatPanel({
       // Get current document content
       const currentDocumentContent = getCurrentDocumentContent ? getCurrentDocumentContent() : "";
 
-      // Send message via WebSocket
-      sendJsonMessage({
-        message: inputMessage,
-        document_content: currentDocumentContent,
-        document_id: documentId,
-        document_version: documentVersion
-      });
+      // Send message via WebSocket with retry
+      const sendWithRetry = async (retries = 3) => {
+        try {
+          sendJsonMessage({
+            message: messageToSend,
+            document_content: currentDocumentContent,
+            document_id: documentId,
+            document_version: documentVersion
+          });
+        } catch (error) {
+          console.error(`Send attempt failed (${4 - retries} of 3):`, error);
+          
+          if (retries > 0) {
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, (4 - retries) * 1000));
+            await sendWithRetry(retries - 1);
+          } else {
+            throw error;
+          }
+        }
+      };
+
+      await sendWithRetry();
 
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Error sending message after retries:", error);
       setIsLoading(false);
+      setConnectionError('Failed to send message. Please check your connection and try again.');
       
       // Add error message
       const errorMessage: ChatMessage = {
         role: "assistant",
-        content: "Sorry, I couldn't send your message. Please try again.",
+        content: "Sorry, I couldn't send your message due to a connection issue. Please try again.",
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -442,6 +570,13 @@ export default function ChatPanel({
     
     if (!suggestion) {
       console.error('❌ Suggestion not found:', cardId);
+      // Show error message to user
+      const errorMessage: ChatMessage = {
+        role: "assistant",
+        content: "Error: Could not find suggestion to accept. Please try again.",
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
       return;
     }
 
@@ -481,9 +616,23 @@ export default function ChatPanel({
         }
       } catch (error) {
         console.error('❌ Error during text replacement:', error);
+        // Show error message to user
+        const errorMessage: ChatMessage = {
+          role: "assistant",
+          content: "Error: Failed to apply suggestion to document. Please try applying manually.",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
     } else {
       console.error('❌ Missing editor ref or suggestion text data');
+      // Show error message to user
+      const errorMessage: ChatMessage = {
+        role: "assistant",
+        content: "Error: Editor not ready or suggestion data missing. Please try again.",
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     }
     
     // Find the message containing this card for API call
@@ -491,31 +640,66 @@ export default function ChatPanel({
       msg.suggestions?.some(s => s.id === cardId)
     );
     
-    if (messageWithCard && documentId && documentVersion) {
+    if (messageWithCard && messageWithCard.id && documentId && documentVersion) {
       try {
+        // Use actual database message ID
+        const messageId = messageWithCard.id;
+        
         // Call API to mark card as accepted
         const response = await fetch(
-          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${Date.now()}?card_id=${cardId}&action=accepted`,
+          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=accepted`,
           { method: 'POST' }
         );
         
         if (response.ok) {
           console.log('✅ Suggestion marked as accepted in database');
+          // Remove the suggestion card from messages (optimistic update after successful DB update)
+          setMessages(prev => 
+            prev.map(msg => ({
+              ...msg,
+              suggestions: msg.suggestions?.filter(s => s.id !== cardId)
+            })).filter(msg => 
+              // Keep summary messages always, only filter empty suggestion_cards
+              msg.type === 'suggestion_summary' || 
+              msg.type !== 'suggestion_cards' || 
+              (msg.suggestions && msg.suggestions.length > 0)
+            )
+          );
+        } else {
+          console.error('Failed to update suggestion status in database');
+          // Show error message if database update fails
+          const errorMessage: ChatMessage = {
+            role: "assistant",
+            content: "Error: Failed to save suggestion status. The suggestion may reappear when you reload.",
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
         }
       } catch (error) {
         console.error('Failed to mark suggestion as accepted:', error);
+        // Show error message on network failure
+        const errorMessage: ChatMessage = {
+          role: "assistant",
+          content: "Error: Network error while saving suggestion status. Please try again.",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
+    } else {
+      // Still remove from UI even if we can't update database (for UX)
+      console.warn('No message ID available, performing local-only removal');
+      setMessages(prev => 
+        prev.map(msg => ({
+          ...msg,
+          suggestions: msg.suggestions?.filter(s => s.id !== cardId)
+        })).filter(msg => 
+          // Keep summary messages always, only filter empty suggestion_cards
+          msg.type === 'suggestion_summary' || 
+          msg.type !== 'suggestion_cards' || 
+          (msg.suggestions && msg.suggestions.length > 0)
+        )
+      );
     }
-    
-    // Remove the suggestion card from messages (optimistic update)
-    setMessages(prev => 
-      prev.map(msg => ({
-        ...msg,
-        suggestions: msg.suggestions?.filter(s => s.id !== cardId)
-      })).filter(msg => 
-        msg.type !== 'suggestion_cards' || (msg.suggestions && msg.suggestions.length > 0)
-      )
-    );
   };
 
   const handleSuggestionDismiss = async (cardId: string) => {
@@ -526,31 +710,66 @@ export default function ChatPanel({
       msg.suggestions?.some(s => s.id === cardId)
     );
     
-    if (messageWithCard && documentId && documentVersion) {
+    if (messageWithCard && messageWithCard.id && documentId && documentVersion) {
       try {
+        // Use actual database message ID
+        const messageId = messageWithCard.id;
+        
         // Call API to mark card as dismissed
         const response = await fetch(
-          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${Date.now()}?card_id=${cardId}&action=dismissed`,
+          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=dismissed`,
           { method: 'POST' }
         );
         
         if (response.ok) {
           console.log('✅ Suggestion dismissed successfully');
+          // Remove the suggestion card from messages (optimistic update after successful DB update)
+          setMessages(prev => 
+            prev.map(msg => ({
+              ...msg,
+              suggestions: msg.suggestions?.filter(s => s.id !== cardId)
+            })).filter(msg => 
+              // Keep summary messages always, only filter empty suggestion_cards
+              msg.type === 'suggestion_summary' || 
+              msg.type !== 'suggestion_cards' || 
+              (msg.suggestions && msg.suggestions.length > 0)
+            )
+          );
+        } else {
+          console.error('Failed to update suggestion status in database');
+          // Show error message if database update fails
+          const errorMessage: ChatMessage = {
+            role: "assistant",
+            content: "Error: Failed to save dismiss status. The suggestion may reappear when you reload.",
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
         }
       } catch (error) {
         console.error('Failed to dismiss suggestion:', error);
+        // Show error message on network failure
+        const errorMessage: ChatMessage = {
+          role: "assistant",
+          content: "Error: Network error while saving dismiss status. Please try again.",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
+    } else {
+      // Still remove from UI even if we can't update database (for UX)
+      console.warn('No message ID available, performing local-only removal');
+      setMessages(prev => 
+        prev.map(msg => ({
+          ...msg,
+          suggestions: msg.suggestions?.filter(s => s.id !== cardId)
+        })).filter(msg => 
+          // Keep summary messages always, only filter empty suggestion_cards
+          msg.type === 'suggestion_summary' || 
+          msg.type !== 'suggestion_cards' || 
+          (msg.suggestions && msg.suggestions.length > 0)
+        )
+      );
     }
-    
-    // Remove the suggestion card from messages (optimistic update)
-    setMessages(prev => 
-      prev.map(msg => ({
-        ...msg,
-        suggestions: msg.suggestions?.filter(s => s.id !== cardId)
-      })).filter(msg => 
-        msg.type !== 'suggestion_cards' || (msg.suggestions && msg.suggestions.length > 0)
-      )
-    );
   };
 
   const handleSuggestionCopy = async (cardId: string) => {
@@ -562,9 +781,22 @@ export default function ChatPanel({
       try {
         await navigator.clipboard.writeText(suggestion.replace_to);
         console.log('✅ Suggestion copied to clipboard');
-        // TODO: Show success notification
+        // Show success message to user
+        const successMessage: ChatMessage = {
+          role: "assistant",
+          content: "✅ Suggestion copied to clipboard successfully!",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, successMessage]);
       } catch (error) {
         console.error('Failed to copy suggestion:', error);
+        // Show error message to user
+        const errorMessage: ChatMessage = {
+          role: "assistant",
+          content: "Error: Failed to copy suggestion to clipboard. Please copy manually.",
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
     }
   };
@@ -579,9 +811,48 @@ export default function ChatPanel({
 
 
 
+  // Get connection status display
+  const getConnectionStatus = () => {
+    switch (readyState) {
+      case ReadyState.CONNECTING:
+        return { text: "Connecting...", color: "text-yellow-600", bgColor: "bg-yellow-100" };
+      case ReadyState.OPEN:
+        return { text: "Connected", color: "text-green-600", bgColor: "bg-green-100" };
+      case ReadyState.CLOSING:
+        return { text: "Disconnecting...", color: "text-orange-600", bgColor: "bg-orange-100" };
+      case ReadyState.CLOSED:
+        return { text: "Disconnected", color: "text-red-600", bgColor: "bg-red-100" };
+      default:
+        return { text: "Unknown", color: "text-gray-600", bgColor: "bg-gray-100" };
+    }
+  };
+
+  const connectionStatus = getConnectionStatus();
+
   return (
     <div className={`flex flex-col h-full bg-white rounded-lg shadow-sm relative ${className}`}>
-      {/* Chat content area - full height */}
+      {/* Connection status bar */}
+      {(connectionError || readyState !== ReadyState.OPEN) && (
+        <div className={`px-4 py-2 text-xs border-b ${connectionStatus.bgColor}`}>
+          <div className="flex items-center justify-between">
+            <span className={`flex items-center ${connectionStatus.color}`}>
+              <div className={`w-2 h-2 rounded-full mr-2 ${
+                readyState === ReadyState.OPEN ? 'bg-green-400' : 
+                readyState === ReadyState.CONNECTING ? 'bg-yellow-400 animate-pulse' : 'bg-red-400'
+              }`}></div>
+              {connectionError || connectionStatus.text}
+            </span>
+            {connectionError && readyState === ReadyState.CLOSED && (
+              <button
+                onClick={() => window.location.reload()}
+                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Refresh Page
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-3">
@@ -614,7 +885,16 @@ export default function ChatPanel({
               ) : (
                 // Assistant message
                 <div className="space-y-3">
-                  {msg.type === "suggestion_cards" && msg.suggestions && msg.suggestions.length > 0 ? (
+                  {msg.type === "suggestion_summary" ? (
+                    // Summary message (always visible)
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="text-sm text-green-800">
+                        <ReactMarkdown>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : msg.type === "suggestion_cards" && msg.suggestions && msg.suggestions.length > 0 ? (
                     // Suggestion cards
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <InlineSuggestionCard 
@@ -627,7 +907,7 @@ export default function ChatPanel({
                       />
                     </div>
                   ) : (
-                    // Regular text message
+                    // Regular text message  
                     <div className="bg-gray-100 text-gray-800 rounded-lg px-4 py-2">
                       <div className="text-sm">
                         <ReactMarkdown
@@ -692,7 +972,12 @@ export default function ChatPanel({
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={readyState === ReadyState.OPEN ? "Ask any question..." : "Connecting..."}
+            placeholder={
+              connectionError ? "Connection error - check network" :
+              readyState === ReadyState.OPEN ? "Ask any question..." : 
+              readyState === ReadyState.CONNECTING ? "Connecting..." :
+              "Not connected"
+            }
             className="flex-1 text-sm placeholder-gray-400 bg-transparent focus:outline-none border-none focus:ring-0 focus:border-transparent"
             style={{ 
               border: 'none', 
@@ -703,7 +988,7 @@ export default function ChatPanel({
               MozAppearance: 'none',
               appearance: 'none'
             }}
-            disabled={isLoading || readyState !== ReadyState.OPEN}
+            disabled={isLoading || (readyState !== ReadyState.OPEN && readyState !== ReadyState.CONNECTING)}
           />
           <button
             onClick={sendMessage}

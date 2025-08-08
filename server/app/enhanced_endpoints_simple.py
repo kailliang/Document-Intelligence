@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.internal.ai_enhanced import get_ai_enhanced
 from app.internal.text_utils import html_to_plain_text, validate_text_for_ai
-from app.internal.db import get_db
+from app.internal.db import get_db, SessionLocal
 from app.internal.chat_manager import get_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -197,9 +197,7 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("🔌 Unified chat WebSocket connection established")
     
-    # Initialize database session and chat manager
-    db_session = next(get_db())
-    chat_manager = get_chat_manager(db_session)
+    db_session = None
     
     try:
         # Send connection success message
@@ -234,9 +232,11 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                 
                 # Save user message to chat history
                 if document_id:
-                    await chat_manager.save_user_message(
-                        document_id, document_version, user_message
-                    )
+                    with SessionLocal() as temp_db:
+                        temp_chat_manager = get_chat_manager(temp_db)
+                        await temp_chat_manager.save_user_message(
+                            document_id, document_version, user_message
+                        )
                 
                 # Send processing start message
                 processing_msg = {
@@ -301,14 +301,55 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                                         }
                                         cards.append(card)
                                     
-                                    messages = [{
-                                        "type": "suggestion_cards",
-                                        "cards": cards
-                                    }]
+                                    # Generate summary statistics
+                                    severity_counts = {"high": 0, "medium": 0, "low": 0}
+                                    type_counts = {}
+                                    for card in cards:
+                                        severity = card.get("severity", "medium")
+                                        if severity in severity_counts:
+                                            severity_counts[severity] += 1
+                                        
+                                        card_type = card.get("type", "General")
+                                        type_counts[card_type] = type_counts.get(card_type, 0) + 1
+                                    
+                                    # Create summary message
+                                    summary_content = f"📋 Document Analysis: Found {len(cards)} improvement suggestions"
+                                    if severity_counts["high"] > 0:
+                                        summary_content += f"\n• 🔴 High Priority: {severity_counts['high']} issues"
+                                    if severity_counts["medium"] > 0:
+                                        summary_content += f"\n• 🟡 Medium Priority: {severity_counts['medium']} issues"
+                                    if severity_counts["low"] > 0:
+                                        summary_content += f"\n• 🔵 Low Priority: {severity_counts['low']} issues"
+                                    
+                                    top_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+                                    if top_types:
+                                        summary_content += f"\n\nMain Issue Types:"
+                                        for type_name, count in top_types:
+                                            summary_content += f"\n• {type_name}: {count} issues"
+                                    
+                                    
+                                    # Create dual messages: summary + cards
+                                    messages = [
+                                        {
+                                            "type": "suggestion_summary",
+                                            "content": summary_content,
+                                            "summary": {
+                                                "total_count": len(cards),
+                                                "severity_counts": severity_counts,
+                                                "type_counts": type_counts,
+                                                "accepted_count": 0,
+                                                "dismissed_count": 0
+                                            }
+                                        },
+                                        {
+                                            "type": "suggestion_cards", 
+                                            "cards": cards
+                                        }
+                                    ]
                                     intent_detected = "document_analysis"
                                     agents_used = ["ai_enhanced"]
                                     
-                                    logger.info(f"✅ Generated {len(cards)} suggestion cards from AI")
+                                    logger.info(f"✅ Generated summary + {len(cards)} suggestion cards from AI")
                                 else:
                                     # No issues found
                                     content = "Great! I've analyzed your document and found no significant issues. The document appears to be well-structured."
@@ -329,16 +370,26 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                                 intent_detected = "error"
                                 agents_used = ["ai_enhanced"]
                                 
-                        # Save to chat history
+                        # Save to chat history and get message IDs (handle multiple messages)
                         if document_id:
-                            if messages[0]["type"] == "suggestion_cards":
-                                await chat_manager.save_suggestion_cards(
-                                    document_id, document_version, messages[0]["cards"], agents_used
-                                )
-                            else:
-                                await chat_manager.save_assistant_message(
-                                    document_id, document_version, messages[0]["content"], agents_used
-                                )
+                            with SessionLocal() as temp_db:
+                                temp_chat_manager = get_chat_manager(temp_db)
+                                for i, message in enumerate(messages):
+                                    if message["type"] == "suggestion_summary":
+                                        saved_message = await temp_chat_manager.save_assistant_message(
+                                            document_id, document_version, message["content"], agents_used
+                                        )
+                                        messages[i]["message_id"] = saved_message.id
+                                    elif message["type"] == "suggestion_cards":
+                                        saved_message = await temp_chat_manager.save_suggestion_cards(
+                                            document_id, document_version, message["cards"], agents_used
+                                        )
+                                        messages[i]["message_id"] = saved_message.id
+                                    elif message["type"] == "text":
+                                        saved_message = await temp_chat_manager.save_assistant_message(
+                                            document_id, document_version, message["content"], agents_used
+                                        )
+                                        messages[i]["message_id"] = saved_message.id
                     else:
                         # Regular chat response - use AI chat functionality
                         logger.info("💬 Intent detected: Chat conversation")
@@ -365,9 +416,13 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                         
                         # Save assistant message to chat history
                         if document_id:
-                            await chat_manager.save_assistant_message(
-                                document_id, document_version, ai_response, agents_used
-                            )
+                            with SessionLocal() as temp_db:
+                                temp_chat_manager = get_chat_manager(temp_db)
+                                saved_message = await temp_chat_manager.save_assistant_message(
+                                    document_id, document_version, ai_response, agents_used
+                                )
+                                # Add message ID to response for frontend tracking
+                                messages[0]["message_id"] = saved_message.id
                             
                 except Exception as e:
                     logger.error(f"❌ AI processing error: {e}")
@@ -413,9 +468,8 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"❌ Unified chat WebSocket error: {e}")
     finally:
-        # Clean up database session
-        if db_session:
-            db_session.close()
+        # WebSocket cleanup - database sessions are handled per operation
+        pass
 
 
 # Chat history management implementations
@@ -426,20 +480,18 @@ async def load_chat_history_for_version(document_id: int, version_number: str) -
     logger.info(f"📚 Loading chat history for document {document_id}, version {version_number}")
     
     try:
-        # Get database session and chat manager
-        db_session = next(get_db())
-        chat_manager = get_chat_manager(db_session)
-        
-        # Load chat history
-        chat_messages = await chat_manager.load_chat_history(document_id, version_number)
-        
-        # Convert to API format
-        api_messages = []
-        for chat_msg in chat_messages:
-            api_message = chat_msg.to_dict()
-            api_messages.append(api_message)
-        
-        db_session.close()
+        # Use session context manager for proper cleanup
+        with SessionLocal() as db_session:
+            chat_manager = get_chat_manager(db_session)
+            
+            # Load chat history
+            chat_messages = await chat_manager.load_chat_history(document_id, version_number)
+            
+            # Convert to API format
+            api_messages = []
+            for chat_msg in chat_messages:
+                api_message = chat_msg.to_dict()
+                api_messages.append(api_message)
         
         return {
             "success": True,
@@ -461,31 +513,28 @@ async def load_chat_history_for_version(document_id: int, version_number: str) -
         }
 
 
-async def handle_suggestion_card_action(document_id: int, version_number: str,
-                                      message_id: int, card_id: str, action: str) -> Dict:
+async def handle_suggestion_card_action(message_id: int, card_id: str, action: str) -> Dict:
     """
     Handle suggestion card actions (accept/dismiss).
     """
     logger.info(f"🎯 Handling card action: {action} for card {card_id}")
     
     try:
-        # Get database session and chat manager
-        db_session = next(get_db())
-        chat_manager = get_chat_manager(db_session)
-        
-        # Mark the card action
-        success = await chat_manager.mark_suggestion_card_action(message_id, card_id, action)
-        
-        if success:
-            logger.info(f"✅ Card {card_id} marked as {action}")
+        # Use session context manager for proper cleanup
+        with SessionLocal() as db_session:
+            chat_manager = get_chat_manager(db_session)
             
-            # Check if we should remove the message (all cards acted upon)
-            if action in ['accepted', 'dismissed']:
-                removed = await chat_manager.remove_suggestion_card_message(message_id)
-                if removed:
-                    logger.info(f"🗑️ Removed suggestion cards message {message_id} (all cards acted upon)")
-        
-        db_session.close()
+            # Mark the card action
+            success = await chat_manager.mark_suggestion_card_action(message_id, card_id, action)
+            
+            if success:
+                logger.info(f"✅ Card {card_id} marked as {action}")
+                
+                # Check if we should remove the message (all cards acted upon)
+                if action in ['accepted', 'dismissed']:
+                    removed = await chat_manager.remove_suggestion_card_message(message_id)
+                    if removed:
+                        logger.info(f"🗑️ Removed suggestion cards message {message_id} (all cards acted upon)")
         
         return {
             "success": success,
