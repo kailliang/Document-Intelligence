@@ -121,7 +121,6 @@ function MermaidDiagram({ chart, onInsert }: { chart: string; onInsert?: (mermai
 export default function ChatPanel({ 
   className, 
   getCurrentDocumentContent,
-  onDiagramInsertions,
   onInsertMermaid,
   documentId,
   documentVersion = "v1.0"
