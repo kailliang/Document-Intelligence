@@ -161,21 +161,21 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
           <div className="flex gap-2 pt-2 border-t">
             <button
               onClick={() => onAccept(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[11px] font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
+              className="flex-1 px-3 py-2 text-[10px] font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
               title="Accept suggestion and apply to document"
             >
               ✅ Accept
             </button>
             <button
               onClick={() => onCopy(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[11px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+              className="flex-1 px-3 py-2 text-[10px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
               title="Copy suggestion content"
             >
               📋 Copy
             </button>
             <button
               onClick={() => onDismiss(suggestion.id)}
-              className="flex-1 px-3 py-2 text-[11px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
+              className="flex-1 px-3 py-2 text-[10px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
               title="Dismiss this suggestion"
             >
               ❌ Dismiss
