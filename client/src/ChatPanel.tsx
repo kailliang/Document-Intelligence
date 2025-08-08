@@ -169,12 +169,9 @@ export default function ChatPanel({
             };
 
             // Add suggestions if this is a suggestion_cards message
-            if (msg.type === 'suggestion_cards' && msg.metadata?.suggestion_cards) {
-              baseMessage.suggestions = msg.metadata.suggestion_cards.filter((card: any) => {
-                // Only include cards that haven't been acted upon
-                const cardActions = msg.metadata.card_actions || {};
-                return !cardActions[card.id];
-              });
+            if (msg.type === 'suggestion_cards' && msg.suggestion_cards) {
+              baseMessage.suggestions = msg.suggestion_cards;
+              // TODO: Filter out cards that have been acted upon using metadata
             }
 
             return baseMessage;
