@@ -4,7 +4,6 @@ import axios from "axios";
 import LoadingOverlay from "./internal/LoadingOverlay";
 import Logo from "./assets/logo.png";
 import ChatPanel from "./ChatPanel";
-import { findTextInDocument, replaceText } from "./internal/HighlightExtension";
 import TurndownService from "turndown";
 
 const BACKEND_URL = "http://localhost:8000";
@@ -36,23 +35,6 @@ interface DocumentListItem {
   updated_at: string;
 }
 
-// AI suggestion related interfaces
-interface AISuggestion {
-  type: string;
-  severity: 'high' | 'medium' | 'low';
-  paragraph: number;
-  description: string;
-  text?: string;  // Added: precise original text
-  suggestion: string;
-  originalText?: string;  // Added: original text (for precise matching)
-  replaceTo?: string;     // Added: suggested replacement text
-  confidence?: number;     // Added: confidence score (0-1)
-  confidence_factors?: {   // Added: factors affecting confidence (for debugging)
-    text_length: number;
-    issue_type: string;
-    has_detailed_replacement: boolean;
-  };
-}
 
 interface DiagramInsertion {
   insert_after_text: string;
@@ -69,14 +51,10 @@ interface AppState {
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
   hasUnsavedChanges: boolean;  // Track whether there are unsaved changes
-  aiSuggestions: AISuggestion[];  // AI suggestions
-  aiProcessingStatus: string;     // AI processing status message
-  isAIProcessing: boolean;        // Whether AI is processing
   deleteDialog: {                 // Delete confirmation dialog state
     isOpen: boolean;
     versionNumber: number | null;
   };
-  activeRightTab: 'suggestions' | 'chat';  // Active right sidebar tab
 }
 
 function App() {
@@ -89,14 +67,10 @@ function App() {
     leftSidebarCollapsed: false,
     rightSidebarCollapsed: false,
     hasUnsavedChanges: false,
-    aiSuggestions: [],
-    aiProcessingStatus: "AI assistant is off",
-    isAIProcessing: false,
     deleteDialog: {
       isOpen: false,
       versionNumber: null
     },
-    activeRightTab: 'suggestions'
   });
 
   // Responsive layout detection
@@ -122,10 +96,7 @@ function App() {
   }, [appState.leftSidebarCollapsed, appState.rightSidebarCollapsed]);
 
   const [currentDocumentContent, setCurrentDocumentContent] = useState<string>("");
-  const [activeHighlightIndex, setActiveHighlightIndex] = useState<number | null>(null);
 
-  // Highlight clear timer reference
-  const highlightTimerRef = useRef<number | null>(null);
 
   // TipTap editor instance reference
   const editorRef = useRef<any>(null);
@@ -136,15 +107,6 @@ function App() {
   const handleContentChange = (newContent: string) => {
     setCurrentDocumentContent(newContent);
 
-    // Clear paragraph highlights and timers when content changes
-    if (editorRef.current) {
-      editorRef.current.commands.clearTemporaryHighlights();
-    }
-    setActiveHighlightIndex(null);
-    if (highlightTimerRef.current) {
-      clearTimeout(highlightTimerRef.current);
-      highlightTimerRef.current = null;
-    }
 
     // If content differs from current document content, mark as having unsaved changes
     if (appState.currentDocument && newContent !== appState.currentDocument.content) {
@@ -203,8 +165,6 @@ function App() {
         documentVersions: versions,
         isLoading: false,
         hasUnsavedChanges: false,  // Reset unsaved state
-        aiSuggestions: [],         // Clear AI suggestions
-        aiProcessingStatus: "AI assistant is off"  // Update status message
       }));
       setCurrentDocumentContent(documentData.content);
 
@@ -286,8 +246,6 @@ function App() {
         currentDocument: updatedDocument,
         isLoading: false,
         hasUnsavedChanges: false,  // Reset unsaved state after version switch
-        aiSuggestions: [],         // Clear AI suggestions
-        aiProcessingStatus: "AI assistant is off"  // Update status message
       }));
       setCurrentDocumentContent(updatedDocument.content);
 
@@ -354,36 +312,6 @@ function App() {
     }
   };
 
-  /**
-   * Handle AI suggestions from WebSocket
-   */
-  const handleAISuggestions = useCallback((suggestions: AISuggestion[]) => {
-    console.log("🎯 Updating AI suggestions:", suggestions.length, "suggestions");
-    setAppState(prev => {
-      // Prevent duplicate setting of same suggestions
-      if (JSON.stringify(prev.aiSuggestions) === JSON.stringify(suggestions)) {
-        console.log("🔄 Suggestions unchanged, skipping update");
-        return prev;
-      }
-      return {
-        ...prev,
-        aiSuggestions: suggestions,
-        isAIProcessing: false
-      };
-    });
-  }, []);
-
-  /**
-   * Handle AI processing status updates
-   */
-  const handleAIProcessingStatus = useCallback((isProcessing: boolean, message?: string) => {
-    console.log("📊 AI status update:", { isProcessing, message });
-    setAppState(prev => ({
-      ...prev,
-      isAIProcessing: isProcessing,
-      aiProcessingStatus: message || (isProcessing ? "AI analysing..." : "AI standby")
-    }));
-  }, []);
 
   /**
    * Highlight paragraph in editor by matching text content
@@ -487,14 +415,6 @@ function App() {
   const handleSuggestionClick = useCallback((suggestion: AISuggestion, index: number) => {
     console.log('🖱️ Clicked suggestion card:', suggestion);
 
-    // Clear previous timer
-    if (highlightTimerRef.current) {
-      clearTimeout(highlightTimerRef.current);
-      highlightTimerRef.current = null;
-    }
-
-    // Set currently active suggestion
-    setActiveHighlightIndex(index);
 
     // Use text highlighting
     highlightParagraphByText(suggestion);
@@ -505,19 +425,10 @@ function App() {
       if (editorRef.current) {
         editorRef.current.commands.clearTemporaryHighlights();
       }
-      setActiveHighlightIndex(null);
       highlightTimerRef.current = null;
     }, 3000);
   }, [highlightParagraphByText]);
 
-  // Clean up timers when component unmounts
-  useEffect(() => {
-    return () => {
-      if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current);
-      }
-    };
-  }, []);
 
   /**
    * Find the actual scroll container for an element
@@ -558,30 +469,6 @@ function App() {
     }));
   };
 
-  /**
-   * Manually trigger AI analysis
-   */
-  const [manualAnalysisFunction, setManualAnalysisFunction] = useState<(() => void) | null>(null);
-
-  const triggerAIAnalysis = () => {
-    if (!appState.currentDocument) {
-      console.error('Please select a document first');
-      return;
-    }
-
-    if (!manualAnalysisFunction) {
-      console.warn('AI analysis function not ready, please ensure document is loaded');
-      return;
-    }
-
-    console.log('🚀 Triggering AI analysis');
-    manualAnalysisFunction();
-  };
-
-  const registerManualAnalysis = useCallback((analysisFunction: () => void) => {
-    console.log('📌 App: Received manual analysis function');
-    setManualAnalysisFunction(() => analysisFunction);
-  }, []);
 
   /**
    * Handle editor instance ready
@@ -1041,19 +928,21 @@ function App() {
                                   : 'hover:bg-gray-100'
                                   } ${appState.isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                               >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="font-medium text-sm">v{version.version_number}.0</span>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-baseline space-x-2">
+                                    <span className="font-medium text-sm">v{version.version_number}.0</span>
+                                    <span className="text-xs text-gray-500">
+                                      Created on {new Date(version.created_at).toLocaleString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  </div>
                                   {version.version_number === appState.currentDocument?.version_number && (
-                                    <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Current</span>
+                                    <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full flex-shrink-0 ml-2">Current</span>
                                   )}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  Created on {new Date(version.created_at).toLocaleString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
                                 </div>
                               </button>
 
@@ -1131,9 +1020,6 @@ function App() {
                 <Document
                   onContentChange={handleContentChange}
                   content={currentDocumentContent}
-                  onAISuggestions={handleAISuggestions}
-                  onProcessingStatus={handleAIProcessingStatus}
-                  onManualAnalysis={registerManualAnalysis}
                   onEditorReady={handleEditorReady}
                   onDiagramInsertions={handleDiagramInsertions}
                 />
@@ -1230,25 +1116,10 @@ function App() {
               </svg>
             </button>
             {!appState.rightSidebarCollapsed && (
-              <div className="flex flex-1 space-x-2">
-                <button
-                  onClick={() => setAppState(prev => ({ ...prev, activeRightTab: 'chat' }))}
-                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${appState.activeRightTab === 'chat'
-                    ? 'text-purple-600 bg-purple-100'
-                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                    }`}
-                >
-                  💬 AI Chat
-                </button>
-                <button
-                  onClick={() => setAppState(prev => ({ ...prev, activeRightTab: 'suggestions' }))}
-                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${appState.activeRightTab === 'suggestions'
-                    ? 'text-blue-600 bg-blue-100'
-                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                    }`}
-                >
-                  🤖 AI Suggestions
-                </button>
+              <div className="flex flex-1">
+                <h3 className="text-lg font-medium text-gray-800 px-4 py-1.5">
+                  🤖 AI Assistant
+                </h3>
               </div>
             )}
           </div>
@@ -1259,257 +1130,15 @@ function App() {
 
               {/* Tab content - limit height to prevent overflow */}
               <div className="flex-1 overflow-hidden flex flex-col">
-                {appState.activeRightTab === 'chat' ? (
-                  <ChatPanel
-                    key={appState.currentDocument?.id}
-                    className="h-full"
-                    getCurrentDocumentContent={() => editorRef.current?.getHTML() || ""}
-                    onDiagramInsertions={handleDiagramInsertions}
-                    onInsertMermaid={handleInsertMermaid}
-                  />
-                ) : (
-                  <div className="flex-1 p-4 overflow-y-auto min-h-0">
-                  {/* AI suggestions display area */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-center mb-2">
-                      {/* AI analysis button */}
-                      <button
-                        onClick={triggerAIAnalysis}
-                        disabled={appState.isAIProcessing || appState.aiProcessingStatus.includes('disconnected') || appState.aiProcessingStatus.includes('connection failed')}
-                        className={`w-full px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${appState.isAIProcessing || appState.aiProcessingStatus.includes('disconnected') || appState.aiProcessingStatus.includes('connection failed')
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                          }`}
-                          aria-label="AI Document Analysis"
-                          title={
-                            appState.aiProcessingStatus.includes('disconnected')
-                              ? 'WebSocket connection disconnected, please refresh page'
-                              : appState.aiProcessingStatus.includes('connection failed')
-                                ? 'WebSocket connection failed, please check network'
-                                : appState.isAIProcessing
-                                  ? 'AI is analysing, please wait'
-                                  : 'AI Document Analysis'
-                          }
-                        >
-                          {appState.isAIProcessing
-                            ? '🔄 Analysing...'
-                            : appState.aiProcessingStatus.includes('disconnected')
-                              ? '❌ Disconnected'
-                              : appState.aiProcessingStatus.includes('connection failed')
-                                ? '❌ Connection Failed'
-                                : appState.aiProcessingStatus.includes('connecting')
-                                  ? '🔄 Connecting'
-                                  : '🤖 AI Analysis'
-                          }
-                        </button>
-                    </div>
-
-                    {/* AI suggestions list */}
-                    {appState.aiSuggestions.length > 0 ? (
-                      <div className="space-y-3">
-                        {/* Sort suggestions: first by severity (high->medium->low), then by paragraph order */}
-                        {[...appState.aiSuggestions]
-                          .sort((a, b) => {
-                            const severityOrder = { high: 3, medium: 2, low: 1 };
-                            const severityA = severityOrder[a.severity] || 2;
-                            const severityB = severityOrder[b.severity] || 2;
-
-                            // Sort by severity first (descending)
-                            if (severityA !== severityB) {
-                              return severityB - severityA;
-                            }
-
-                            // For same severity, sort by paragraph (ascending)
-                            return a.paragraph - b.paragraph;
-                          })
-                          .map((suggestion, index) => (
-                            <div
-                              key={index}
-                              className={`p-3 rounded-lg border-l-4 transition-all duration-200 ${activeHighlightIndex === index
-                                ? 'ring-2 ring-offset-2 ring-gray-400 shadow-lg' // Active state
-                                : ''
-                                } ${
-                                // Apply opacity for low confidence suggestions
-                                suggestion.confidence !== undefined && suggestion.confidence < 0.5
-                                  ? 'opacity-75'
-                                  : ''
-                                } ${suggestion.severity === 'high'
-                                  ? 'border-red-500 bg-red-50'
-                                  : suggestion.severity === 'medium'
-                                    ? 'border-yellow-500 bg-yellow-50'
-                                    : 'border-blue-500 bg-blue-50'
-                                }`}
-                            >
-                              {/* Clickable area - for highlighting text */}
-                              <div
-                                onClick={() => handleSuggestionClick(suggestion, index)}
-                                className="cursor-pointer"
-                              >
-                                {/* Suggestion header */}
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-xs font-medium text-gray-600">
-                                    Paragraph {suggestion.paragraph}
-                                  </span>
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded-full font-medium ${suggestion.severity === 'high'
-                                      ? 'bg-red-200 text-red-800'
-                                      : suggestion.severity === 'medium'
-                                        ? 'bg-yellow-200 text-yellow-800'
-                                        : 'bg-blue-200 text-blue-800'
-                                      }`}
-                                  >
-                                    {suggestion.severity === 'high' ? 'Critical' :
-                                      suggestion.severity === 'medium' ? 'Medium' : 'Minor'}
-                                  </span>
-                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                    {suggestion.type}
-                                  </span>
-                                </div>
-
-                                {/* Problem description */}
-                                <p className="text-sm text-gray-700 mb-3 leading-relaxed">
-                                  {suggestion.description}
-                                </p>
-
-                                {/* AI suggestion with confidence */}
-                                {(suggestion.replaceTo !== undefined || suggestion.suggestion) && (
-                                  <>
-                                    <p className="text-sm font-medium text-green-600 mb-1">💡 Suggestion:</p>
-                                    {/* Confidence display below Suggestion */}
-                                    {suggestion.confidence !== undefined && (
-                                      <div className="flex items-center gap-2 mb-3 ml-4">
-                                        <span className="text-xs text-gray-600">Confidence:</span>
-                                        <div className="flex items-center gap-1">
-                                          <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                            <div 
-                                              className={`h-full transition-all duration-300 ${
-                                                suggestion.confidence >= 0.8 ? 'bg-green-500' :
-                                                suggestion.confidence >= 0.6 ? 'bg-yellow-500' : 'bg-orange-500'
-                                              }`}
-                                              style={{ width: `${suggestion.confidence * 100}%` }}
-                                            />
-                                          </div>
-                                          <span className={`text-xs font-medium ${
-                                            suggestion.confidence >= 0.8 ? 'text-green-600' :
-                                            suggestion.confidence >= 0.6 ? 'text-yellow-600' : 'text-orange-600'
-                                          }`}>
-                                            {(suggestion.confidence * 100).toFixed(0)}%
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-                                    <div className="bg-white p-3 rounded border mb-3">
-                                      <p className="text-sm text-gray-700 leading-relaxed font-mono">
-                                        {suggestion.replaceTo || suggestion.suggestion}
-                                      </p>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-
-                              {/* Action buttons */}
-                              <div className="flex gap-2 pt-2 border-t">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    acceptSuggestion(suggestion, index);
-                                  }}
-                                  className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
-                                  title="Accept suggestion and apply to document"
-                                >
-                                  ✅ Accept
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copySuggestion(suggestion);
-                                  }}
-                                  className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
-                                  title="Copy suggestion content"
-                                >
-                                  📋 Copy
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    closeSuggestion(suggestion);
-                                  }}
-                                  className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors"
-                                  title="Ignore this suggestion"
-                                >
-                                  ❌ Close
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      /* Empty state when no suggestions */
-                      <div className="h-full flex flex-col items-center justify-center text-gray-500 py-8">
-                        <div className="text-center space-y-4">
-                          <div className="text-4xl">🤖</div>
-                          <div className="text-lg font-medium">AI Assistant</div>
-                          <div className="text-sm max-w-64 text-center">
-                            {appState.isAIProcessing
-                              ? "AI is analysing your document, please wait..."
-                              : appState.currentDocument
-                                ? "Click the AI Analysis button to start analysing the document"
-                                : "Please select a document to start editing"
-                            }
-                          </div>
-
-                          {/* Feature introduction */}
-                          <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
-                            <div className="text-xs font-medium text-blue-800 mb-2">
-                              ✨ AI Features
-                            </div>
-                            <ul className="text-xs text-blue-600 space-y-1">
-                              <li>• Patent claims format checking</li>
-                              <li>• Grammar and structure analysis</li>
-                              <li>• Real-time improvement suggestions</li>
-                              <li>• Automatic issue detection</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Suggestion statistics */}
-                    {appState.aiSuggestions.length > 0 && (
-                      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                        <div className="space-y-3">
-                          <div className="text-sm font-medium text-gray-700">
-                            Found {appState.aiSuggestions.length} suggestion{appState.aiSuggestions.length > 1 ? 's' : ''}
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="flex items-center gap-2 bg-white p-2 rounded">
-                              <div className="w-3 h-3 bg-red-400 rounded-full flex-shrink-0"></div>
-                              <div className="text-xs">
-                                <span className="font-medium">Critical:</span>
-                                <span className="ml-1">{appState.aiSuggestions.filter(s => s.severity === 'high').length}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 bg-white p-2 rounded">
-                              <div className="w-3 h-3 bg-yellow-400 rounded-full flex-shrink-0"></div>
-                              <div className="text-xs">
-                                <span className="font-medium">Medium:</span>
-                                <span className="ml-1">{appState.aiSuggestions.filter(s => s.severity === 'medium').length}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 bg-white p-2 rounded">
-                              <div className="w-3 h-3 bg-blue-400 rounded-full flex-shrink-0"></div>
-                              <div className="text-xs">
-                                <span className="font-medium">Minor:</span>
-                                <span className="ml-1">{appState.aiSuggestions.filter(s => s.severity === 'low').length}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  </div>
-                )}
+                <ChatPanel
+                  key={appState.currentDocument?.id}
+                  className="h-full"
+                  getCurrentDocumentContent={() => editorRef.current?.getHTML() || ""}
+                  onDiagramInsertions={handleDiagramInsertions}
+                  onInsertMermaid={handleInsertMermaid}
+                  documentId={appState.currentDocument?.id}
+                  documentVersion={`v${appState.currentDocument?.version_number || 1}.0`}
+                />
               </div>
             </div>
           )}

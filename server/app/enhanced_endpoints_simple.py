@@ -1,8 +1,9 @@
-# Enhanced endpoints for the application
+# Simple enhanced endpoints for testing the unified chat integration
 
 from datetime import datetime
 import json
 import logging
+import asyncio
 from typing import List, Dict, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect, HTTPException
@@ -12,9 +13,7 @@ from sqlalchemy.orm import Session
 from app.internal.ai_enhanced import get_ai_enhanced
 from app.internal.text_utils import html_to_plain_text, validate_text_for_ai
 from app.internal.db import get_db
-# TODO: Implement these modules for full LangGraph integration
-# from app.internal.chat_manager import get_chat_manager
-# from app.agents.graph_builder import execute_chat_workflow
+from app.internal.chat_manager import get_chat_manager
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +31,6 @@ class ChatRequest(BaseModel):
 async def websocket_enhanced_endpoint(websocket: WebSocket):
     """
     Enhanced WebSocket endpoint: AI suggestion system with Function Calling support
-    
-    Features:
-    - Use Function Calling for more precise text matching
-    - Support originalText and replaceTo fields
-    - More accurate suggestion content
     """
     await websocket.accept()
     logger.info("Enhanced WebSocket connection established")
@@ -153,11 +147,6 @@ async def websocket_enhanced_endpoint(websocket: WebSocket):
 async def chat_with_ai(request: ChatRequest):
     """
     Enhanced AI chat functionality endpoint
-    
-    Supports AI conversation with document context, including:
-    - Patent Q&A based on current document content
-    - Precise diagram insertion in documents
-    - Patent claims analysis and suggestions
     """
     try:
         ai = get_ai_enhanced()
@@ -202,11 +191,8 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
     """
     Unified WebSocket endpoint for integrated AI assistant.
     
-    This endpoint replaces separate chat and analysis endpoints, providing:
-    - Intent-based routing (chat, document analysis, mermaid diagrams)
-    - Multi-agent document analysis (Technical, Legal, Novelty)
-    - Chat history management per document version
-    - Suggestion cards embedded in chat conversations
+    This endpoint handles chat with persistent history management.
+    TODO: Implement full LangGraph multi-agent workflow.
     """
     await websocket.accept()
     logger.info("🔌 Unified chat WebSocket connection established")
@@ -260,47 +246,54 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                 }
                 await websocket.send_text(json.dumps(processing_msg))
                 
-                # Execute LangGraph workflow
-                logger.info("🤖 Executing LangGraph workflow...")
-                result = await execute_chat_workflow(
-                    user_input=user_message,
-                    document_content=document_content,
-                    document_id=document_id,
-                    version_number=document_version
-                )
+                # TEMPORARY: Simple response without LangGraph workflow
+                # TODO: Replace with full LangGraph implementation
+                await asyncio.sleep(1)  # Simulate processing time
                 
-                if not result.get("success", False):
-                    # Handle workflow error
-                    error_msg = {
-                        "type": "workflow_error",
-                        "message": result.get("message", "Analysis failed"),
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                    await websocket.send_text(json.dumps(error_msg))
-                    continue
-                
-                # Process workflow results
-                messages = result.get("messages", [])
-                intent_detected = result.get("intent_detected", "unknown")
-                agents_used = result.get("agents_used", [])
-                
-                logger.info(f"✅ Workflow completed: {intent_detected}, {len(messages)} messages")
-                
-                # Save assistant responses and suggestion cards to chat history
-                if document_id:
-                    for message in messages:
-                        if message.get("type") == "text":
-                            await chat_manager.save_assistant_message(
-                                document_id, document_version,
-                                message.get("content", ""),
-                                agents_used
-                            )
-                        elif message.get("type") == "suggestion_cards":
-                            cards = message.get("cards", [])
-                            if cards:
-                                await chat_manager.save_suggestion_cards(
-                                    document_id, document_version, cards, agents_used
-                                )
+                # Determine intent based on keywords
+                user_lower = user_message.lower()
+                if any(keyword in user_lower for keyword in ["analyze", "review", "check", "improve", "suggest"]):
+                    # Document analysis request - return mock suggestion cards
+                    cards = [{
+                        "id": f"demo_{datetime.utcnow().timestamp()}",
+                        "type": "Structure & Format",
+                        "severity": "medium",
+                        "paragraph": 1,
+                        "description": "This is a demo suggestion. Full LangGraph integration is not yet implemented.",
+                        "original_text": "sample text",
+                        "replace_to": "improved sample text",
+                        "confidence": 0.85,
+                        "agent": "technical",
+                        "created_at": datetime.utcnow().isoformat()
+                    }]
+                    
+                    messages = [{
+                        "type": "suggestion_cards",
+                        "cards": cards
+                    }]
+                    intent_detected = "document_analysis"
+                    agents_used = ["demo"]
+                    
+                    # Save suggestion cards to chat history
+                    if document_id:
+                        await chat_manager.save_suggestion_cards(
+                            document_id, document_version, cards, agents_used
+                        )
+                else:
+                    # Regular chat response
+                    content = f"I received your message: '{user_message}'. This is a demo response. Full LangGraph integration is coming soon!"
+                    messages = [{
+                        "type": "text",
+                        "content": content
+                    }]
+                    intent_detected = "casual_chat"
+                    agents_used = ["demo"]
+                    
+                    # Save assistant message to chat history
+                    if document_id:
+                        await chat_manager.save_assistant_message(
+                            document_id, document_version, content, agents_used
+                        )
                 
                 # Send response to client
                 response = {
@@ -341,65 +334,46 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
             db_session.close()
 
 
-# Chat history management endpoints
+# Chat history management implementations
 async def load_chat_history_for_version(document_id: int, version_number: str) -> Dict:
     """
     Load chat history for a specific document version.
-    
-    Args:
-        document_id: Document ID
-        version_number: Version number (e.g., "v1.0")
-        
-    Returns:
-        Dict containing chat messages and metadata
     """
+    logger.info(f"📚 Loading chat history for document {document_id}, version {version_number}")
+    
     try:
+        # Get database session and chat manager
         db_session = next(get_db())
         chat_manager = get_chat_manager(db_session)
         
         # Load chat history
-        messages = await chat_manager.load_chat_history(document_id, version_number)
+        chat_messages = await chat_manager.load_chat_history(document_id, version_number)
         
         # Convert to API format
-        formatted_messages = []
-        for message in messages:
-            msg_data = message.to_dict()
-            
-            # Add suggestion cards if present and active
-            if message.type == "suggestion_cards":
-                active_cards = []
-                if message.suggestion_cards:
-                    # Filter out cards that have been acted upon
-                    card_actions = message.metadata.get("card_actions", {})
-                    for card in message.suggestion_cards:
-                        card_id = card.get("id")
-                        if not card_id or card_id not in card_actions:
-                            active_cards.append(card)
-                
-                if active_cards:
-                    msg_data["suggestion_cards"] = active_cards
-                else:
-                    # Skip this message if no active cards
-                    continue
-            
-            formatted_messages.append(msg_data)
+        api_messages = []
+        for chat_msg in chat_messages:
+            api_message = chat_msg.to_dict()
+            api_messages.append(api_message)
         
         db_session.close()
         
         return {
             "success": True,
-            "messages": formatted_messages,
+            "messages": api_messages,
             "document_id": document_id,
             "version_number": version_number,
-            "message_count": len(formatted_messages)
+            "message_count": len(api_messages)
         }
         
     except Exception as e:
-        logger.error(f"Failed to load chat history: {e}")
+        logger.error(f"Error loading chat history: {e}")
         return {
             "success": False,
             "error": str(e),
-            "messages": []
+            "messages": [],
+            "document_id": document_id,
+            "version_number": version_number,
+            "message_count": 0
         }
 
 
@@ -407,18 +381,11 @@ async def handle_suggestion_card_action(document_id: int, version_number: str,
                                       message_id: int, card_id: str, action: str) -> Dict:
     """
     Handle suggestion card actions (accept/dismiss).
-    
-    Args:
-        document_id: Document ID
-        version_number: Version number
-        message_id: Chat message ID containing the card
-        card_id: Suggestion card ID
-        action: 'accepted' or 'dismissed'
-        
-    Returns:
-        Dict indicating success/failure
     """
+    logger.info(f"🎯 Handling card action: {action} for card {card_id}")
+    
     try:
+        # Get database session and chat manager
         db_session = next(get_db())
         chat_manager = get_chat_manager(db_session)
         
@@ -426,19 +393,25 @@ async def handle_suggestion_card_action(document_id: int, version_number: str,
         success = await chat_manager.mark_suggestion_card_action(message_id, card_id, action)
         
         if success:
-            # Check if message should be removed (all cards acted upon)
-            await chat_manager.remove_suggestion_card_message(message_id)
+            logger.info(f"✅ Card {card_id} marked as {action}")
+            
+            # Check if we should remove the message (all cards acted upon)
+            if action in ['accepted', 'dismissed']:
+                removed = await chat_manager.remove_suggestion_card_message(message_id)
+                if removed:
+                    logger.info(f"🗑️ Removed suggestion cards message {message_id} (all cards acted upon)")
         
         db_session.close()
         
         return {
             "success": success,
-            "message": f"Card {action} successfully" if success else "Failed to process card action"
+            "message": f"Card {action} successfully" if success else f"Failed to {action} card"
         }
         
     except Exception as e:
-        logger.error(f"Failed to handle card action: {e}")
+        logger.error(f"Error handling card action: {e}")
         return {
             "success": False,
-            "error": str(e)
+            "error": str(e),
+            "message": f"Failed to {action} card"
         }
