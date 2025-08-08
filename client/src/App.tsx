@@ -858,7 +858,7 @@ function App() {
 
         {/* Right sidebar - AI function reserved area */}
         <aside className={`
-          ${appState.rightSidebarCollapsed ? 'w-12' : 'w-88'} 
+          ${appState.rightSidebarCollapsed ? 'w-12' : 'w-100'} 
           ${isMobile && !appState.rightSidebarCollapsed ? 'fixed right-0 top-16 bottom-0 z-50' : 'relative'}
           bg-white border-l border-gray-200 shadow-sm transition-all duration-300 ease-in-out
           flex flex-col
