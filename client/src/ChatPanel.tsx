@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import mermaid from "mermaid";
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import InlineSuggestionCard from './components/InlineSuggestionCard';
+import ProcessingStages from './components/ProcessingStages';
 import { findTextInDocument, replaceText } from './internal/HighlightExtension';
 
 mermaid.initialize({ startOnLoad: true, theme: 'default' });
@@ -23,6 +24,15 @@ interface SuggestionSummary {
   type_counts: Record<string, number>;
   accepted_count: number;
   dismissed_count: number;
+}
+
+interface ProcessingStage {
+  id: string;
+  name: string;
+  message: string;
+  progress: number;
+  status: 'pending' | 'active' | 'completed' | 'error';
+  agent: string;
 }
 
 interface Suggestion {
@@ -142,8 +152,21 @@ export default function ChatPanel({
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
+  const [currentProcessingStage, setCurrentProcessingStage] = useState<ProcessingStage | null>(null);
+  const [allProcessingStages, setAllProcessingStages] = useState<ProcessingStage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
+
+  // Predefined processing stages configuration
+  const defaultStages: ProcessingStage[] = [
+    { id: "intent_detection", name: "Intent Detection", message: "Analyzing your request...", progress: 10, status: 'pending', agent: "system" },
+    { id: "agent_selection", name: "Agent Selection", message: "Selecting appropriate AI agents...", progress: 20, status: 'pending', agent: "system" },
+    { id: "document_parsing", name: "Document Parsing", message: "Processing document content...", progress: 30, status: 'pending', agent: "technical" },
+    { id: "legal_analysis", name: "Legal Analysis", message: "Legal agent investigating compliance...", progress: 50, status: 'pending', agent: "legal" },
+    { id: "technical_analysis", name: "Technical Analysis", message: "Technical agent reviewing structure...", progress: 70, status: 'pending', agent: "technical" },
+    { id: "generating_suggestions", name: "Generating Suggestions", message: "Preparing improvement suggestions...", progress: 85, status: 'pending', agent: "ai_enhanced" },
+    { id: "finalizing_results", name: "Finalizing Results", message: "Finalizing analysis results...", progress: 95, status: 'pending', agent: "system" }
+  ];
 
   // WebSocket connection to unified chat endpoint
   const socketUrl = `ws://localhost:8000/ws/chat`;
@@ -151,7 +174,7 @@ export default function ChatPanel({
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const maxReconnectAttempts = 10;
   
-  const { sendJsonMessage, lastJsonMessage, readyState, getWebSocket } = useWebSocket(socketUrl, {
+  const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl, {
     shouldReconnect: (closeEvent) => {
       // Implement exponential backoff and error handling
       console.log('WebSocket closed:', closeEvent);
@@ -174,10 +197,7 @@ export default function ChatPanel({
       setConnectionError(`Reconnecting... (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
       return true;
     },
-    reconnectInterval: (attemptNumber) => {
-      // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-      return Math.min(1000 * Math.pow(2, attemptNumber), 30000);
-    },
+    reconnectInterval: 3000,
     reconnectAttempts: maxReconnectAttempts,
     onOpen: () => {
       console.log('WebSocket connected successfully');
@@ -301,10 +321,43 @@ export default function ChatPanel({
         
       case 'processing_start':
         setIsLoading(true);
+        // Initialize processing stages
+        setAllProcessingStages(defaultStages);
+        setCurrentProcessingStage(null);
+        break;
+
+      case 'processing_stage':
+        // Handle individual processing stage updates
+        const stageData = message;
+        const updatedStages = allProcessingStages.length > 0 ? allProcessingStages : defaultStages;
+        
+        // Update stages with current stage status
+        const newStages = updatedStages.map(stage => {
+          if (stage.id === stageData.stage) {
+            return {
+              ...stage,
+              name: stageData.name || stage.name,
+              message: stageData.message || stage.message,
+              progress: stageData.progress || stage.progress,
+              status: 'active' as const,
+              agent: stageData.agent || stage.agent
+            };
+          } else if (defaultStages.findIndex(s => s.id === stage.id) < defaultStages.findIndex(s => s.id === stageData.stage)) {
+            // Mark earlier stages as completed
+            return { ...stage, status: 'completed' as const };
+          }
+          return stage;
+        });
+        
+        setAllProcessingStages(newStages);
+        setCurrentProcessingStage(newStages.find(s => s.id === stageData.stage) || null);
         break;
         
       case 'assistant_response':
         setIsLoading(false);
+        // Clear processing stages when response is complete
+        setCurrentProcessingStage(null);
+        setAllProcessingStages([]);
         
         // Process AI response messages
         if (message.messages && Array.isArray(message.messages)) {
@@ -392,12 +445,8 @@ export default function ChatPanel({
     if (readyState === ReadyState.CONNECTING) {
       // Wait for connection with timeout
       console.log('WebSocket is connecting, waiting...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      if (readyState !== ReadyState.OPEN) {
-        setConnectionError('Connection timeout. Please try again.');
-        return;
-      }
+      setConnectionError('Connecting...');
+      return;
     }
     
     if (readyState !== ReadyState.OPEN) {
@@ -949,7 +998,17 @@ export default function ChatPanel({
           ))
         )}
 
-        {isLoading && (
+        {isLoading && currentProcessingStage && (
+          <div className="mr-auto max-w-[90%]">
+            <ProcessingStages 
+              currentStage={currentProcessingStage}
+              allStages={allProcessingStages}
+              className="max-w-lg"
+            />
+          </div>
+        )}
+        
+        {isLoading && !currentProcessingStage && (
           <div className="mr-auto max-w-[80%]">
             <div className="bg-gray-100 rounded-lg px-4 py-2">
               <div className="flex items-center space-x-2">

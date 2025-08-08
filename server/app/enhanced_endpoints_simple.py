@@ -17,6 +17,43 @@ from app.internal.chat_manager import get_chat_manager
 
 logger = logging.getLogger(__name__)
 
+# Processing stages configuration
+PROCESSING_STAGES = [
+    {"id": "intent_detection", "name": "Intent Detection", "message": "Analyzing your request...", "progress": 10},
+    {"id": "agent_selection", "name": "Agent Selection", "message": "Selecting appropriate AI agents...", "progress": 20},
+    {"id": "document_parsing", "name": "Document Parsing", "message": "Processing document content...", "progress": 30},
+    {"id": "legal_analysis", "name": "Legal Analysis", "message": "Legal agent investigating compliance...", "progress": 50},
+    {"id": "technical_analysis", "name": "Technical Analysis", "message": "Technical agent reviewing structure...", "progress": 70},
+    {"id": "generating_suggestions", "name": "Generating Suggestions", "message": "Preparing improvement suggestions...", "progress": 85},
+    {"id": "finalizing_results", "name": "Finalizing Results", "message": "Finalizing analysis results...", "progress": 95}
+]
+
+async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str = "system", delay: float = 0.8):
+    """Send a processing stage message to the client with optional delay"""
+    stage = next((s for s in PROCESSING_STAGES if s["id"] == stage_id), None)
+    if not stage:
+        return
+    
+    # Add delay for realistic processing timing
+    if delay > 0:
+        await asyncio.sleep(delay)
+    
+    stage_msg = {
+        "type": "processing_stage",
+        "stage": stage["id"],
+        "name": stage["name"],
+        "message": stage["message"],
+        "progress": stage["progress"],
+        "agent": agent,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    try:
+        await websocket.send_text(json.dumps(stage_msg))
+        logger.info(f"📊 Sent processing stage: {stage['name']}")
+    except Exception as e:
+        logger.error(f"Failed to send processing stage {stage_id}: {e}")
+
 
 class ChatMessage(BaseModel):
     role: str  # "user" or "assistant"
@@ -238,13 +275,8 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                             document_id, document_version, user_message
                         )
                 
-                # Send processing start message
-                processing_msg = {
-                    "type": "processing_start",
-                    "message": "Processing your request...",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                await websocket.send_text(json.dumps(processing_msg))
+                # Stage 1: Intent Detection
+                await send_processing_stage(websocket, "intent_detection", "system", 0.5)
                 
                 # Real AI integration with intent detection
                 try:
@@ -255,6 +287,12 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                     if any(keyword in user_lower for keyword in ["analyze", "review", "check", "improve", "suggest"]) and document_content.strip():
                         # Document analysis request - use AI to analyze document
                         logger.info("🔍 Intent detected: Document analysis")
+                        
+                        # Stage 2: Agent Selection
+                        await send_processing_stage(websocket, "agent_selection", "system", 0.7)
+                        
+                        # Stage 3: Document Parsing
+                        await send_processing_stage(websocket, "document_parsing", "technical", 0.8)
                         
                         # Convert HTML to plain text for AI analysis
                         plain_text = html_to_plain_text(document_content)
@@ -270,11 +308,20 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                             intent_detected = "error"
                             agents_used = ["system"]
                         else:
+                            # Stage 4: Legal Analysis
+                            await send_processing_stage(websocket, "legal_analysis", "legal", 1.2)
+                            
+                            # Stage 5: Technical Analysis
+                            await send_processing_stage(websocket, "technical_analysis", "technical", 1.5)
+                            
                             # Use AI to analyze document and generate suggestions
                             response_chunks = []
                             async for chunk in ai.review_document_with_functions(plain_text):
                                 if chunk:
                                     response_chunks.append(chunk)
+                            
+                            # Stage 6: Generating Suggestions
+                            await send_processing_stage(websocket, "generating_suggestions", "ai_enhanced", 0.8)
                             
                             full_response = "".join(response_chunks)
                             
@@ -349,8 +396,14 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                                     intent_detected = "document_analysis"
                                     agents_used = ["ai_enhanced"]
                                     
+                                    # Stage 7: Finalizing Results
+                                    await send_processing_stage(websocket, "finalizing_results", "system", 0.5)
+                                    
                                     logger.info(f"✅ Generated summary + {len(cards)} suggestion cards from AI")
                                 else:
+                                    # Stage 7: Finalizing Results (no issues case)
+                                    await send_processing_stage(websocket, "finalizing_results", "system", 0.5)
+                                    
                                     # No issues found
                                     content = "Great! I've analyzed your document and found no significant issues. The document appears to be well-structured."
                                     messages = [{
@@ -394,8 +447,14 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                         # Regular chat response - use AI chat functionality
                         logger.info("💬 Intent detected: Chat conversation")
                         
+                        # Stage 2: Agent Selection (for chat)
+                        await send_processing_stage(websocket, "agent_selection", "system", 0.5)
+                        
                         # Build message history for context
                         chat_messages = [{"role": "user", "content": user_message}]
+                        
+                        # Simplified processing for chat (skip analysis stages)
+                        await send_processing_stage(websocket, "finalizing_results", "ai_enhanced", 0.8)
                         
                         # Get AI chat response
                         response_chunks = []
