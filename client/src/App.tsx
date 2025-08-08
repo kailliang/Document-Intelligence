@@ -880,12 +880,6 @@ function App() {
       {/* Loading overlay */}
       {appState.isLoading && <LoadingOverlay />}
 
-      {/* Header - maintain original design but optimize styles */}
-      <header className="flex items-center justify-center w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-lg z-50 h-16">
-        <img src={Logo} alt="Logo" className="h-10" />
-        <h1 className="ml-4 text-xl font-semibold">Patent Review System</h1>
-      </header>
-
       {/* Main content area - three-column layout */}
       <div className="flex flex-1 overflow-hidden">
 
@@ -900,18 +894,21 @@ function App() {
         {/* Left sidebar - project and version management area */}
         <aside className={`
           ${appState.leftSidebarCollapsed ? 'w-12' : 'w-88'} 
-          ${isMobile && !appState.leftSidebarCollapsed ? 'fixed left-0 top-16 bottom-0 z-50' : 'relative'}
+          ${isMobile && !appState.leftSidebarCollapsed ? 'fixed left-0 top-0 bottom-0 z-50' : 'relative'}
           bg-white border-r border-gray-200 shadow-sm transition-all duration-300 ease-in-out
           flex flex-col
         `}>
           {/* Left sidebar header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0 h-[52px]">
             {!appState.leftSidebarCollapsed && (
-              <h2 className="text-lg font-semibold text-gray-800">Projects</h2>
+              <div className="flex items-center space-x-2">
+                <img src={Logo} alt="Logo" className="h-5 flex-shrink-0" />
+                <h3 className="text-xl font-semibold text-gray-400 whitespace-nowrap">Patent Review</h3>
+              </div>
             )}
             <button
               onClick={toggleLeftSidebar}
-              className="p-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+              className="p-1 rounded-md hover:bg-gray-100 transition-colors duration-200"
               aria-label="Toggle left sidebar"
             >
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1118,7 +1115,7 @@ function App() {
         {/* Center area - document editing area */}
         <main className="flex-1 flex flex-col bg-white min-h-0">
           {/* Document toolbar */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0 h-[52px]">
             <div className="flex items-center space-x-4">
               <h3 className="text-xl font-semibold text-gray-400">
                 {appState.currentDocument?.title || "Select a Document"}
@@ -1220,11 +1217,11 @@ function App() {
           bg-white border-l border-gray-200 shadow-sm transition-all duration-300 ease-in-out
           flex flex-col
         `}>
-          {/* Right sidebar header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          {/* Right sidebar header with tab navigation */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0 h-[52px]">
             <button
               onClick={toggleRightSidebar}
-              className="p-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+              className="p-1 rounded-md hover:bg-gray-100 transition-colors duration-200 mr-2"
               aria-label="Toggle right sidebar"
             >
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1233,34 +1230,32 @@ function App() {
               </svg>
             </button>
             {!appState.rightSidebarCollapsed && (
-              <h2 className="text-lg font-semibold text-gray-800">AI Assistant</h2>
-            )}
-          </div>
-
-          {/* Right sidebar content */}
-          {!appState.rightSidebarCollapsed && (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              {/* Tab navigation - fixed at top */}
-              <div className="flex border-b border-gray-200 flex-shrink-0 bg-white z-10">
+              <div className="flex flex-1 space-x-2">
                 <button
                   onClick={() => setAppState(prev => ({ ...prev, activeRightTab: 'chat' }))}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${appState.activeRightTab === 'chat'
-                    ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
-                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${appState.activeRightTab === 'chat'
+                    ? 'text-purple-600 bg-purple-100'
+                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                     }`}
                 >
                   💬 AI Chat
                 </button>
                 <button
                   onClick={() => setAppState(prev => ({ ...prev, activeRightTab: 'suggestions' }))}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${appState.activeRightTab === 'suggestions'
-                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${appState.activeRightTab === 'suggestions'
+                    ? 'text-blue-600 bg-blue-100'
+                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                     }`}
                 >
                   🤖 AI Suggestions
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Right sidebar content */}
+          {!appState.rightSidebarCollapsed && (
+            <div className="flex-1 overflow-hidden flex flex-col">
 
               {/* Tab content - limit height to prevent overflow */}
               <div className="flex-1 overflow-hidden flex flex-col">
