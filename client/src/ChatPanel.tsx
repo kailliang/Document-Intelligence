@@ -583,14 +583,75 @@ export default function ChatPanel({
       if (success) {
         console.log(`✅ Old-style highlighting applied to suggestion ${suggestion.id}`);
         
-        // Scroll the highlighted text to the center of the window
-        const startPos = editorRef.current.view.coordsAtPos(textLocation.from);
-        if (startPos) {
-          startPos.node?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'center'
-          });
+        // Precise scrolling logic for invisible text
+        try {
+          const startPos = editorRef.current.view.coordsAtPos(textLocation.from);
+          
+          if (startPos && startPos.top !== undefined) {
+            // Find the editor's scrollable container
+            const editorElement = editorRef.current.view.dom;
+            const scrollContainer = editorElement.closest('.overflow-y-auto');
+            
+            if (!scrollContainer) {
+              console.warn('⚠️ Could not find scrollable container');
+              return;
+            }
+            
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const currentScrollTop = scrollContainer.scrollTop;
+            const containerHeight = containerRect.height;
+            
+            // Get target position relative to the scrollable container
+            const targetElementTop = startPos.top - containerRect.top + currentScrollTop;
+            const currentViewportTop = currentScrollTop;
+            const currentViewportBottom = currentScrollTop + containerHeight;
+            
+            console.log(`📍 Target element position: ${targetElementTop}`);
+            console.log(`🖼️ Current container viewport: ${currentViewportTop} - ${currentViewportBottom}`);
+            console.log(`📦 Container scroll top: ${currentScrollTop}, height: ${containerHeight}`);
+            
+            // Check if target is outside viewport
+            if (targetElementTop < currentViewportTop || targetElementTop > currentViewportBottom) {
+              let targetScrollTop;
+              
+              if (targetElementTop < currentViewportTop) {
+                // Target is above viewport - scroll up to show at top + 1/3 container height
+                targetScrollTop = targetElementTop - (containerHeight / 3);
+                console.log(`⬆️ Target above viewport, scrolling up to: ${targetScrollTop}`);
+              } else {
+                // Target is below viewport - scroll down to show at bottom - 1/3 container height  
+                targetScrollTop = targetElementTop - (containerHeight * 2/3);
+                console.log(`⬇️ Target below viewport, scrolling down to: ${targetScrollTop}`);
+              }
+              
+              // Ensure we don't scroll beyond container bounds
+              const maxScrollTop = scrollContainer.scrollHeight - containerHeight;
+              targetScrollTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
+              
+              // Smooth scroll to calculated position
+              scrollContainer.scrollTo({
+                top: targetScrollTop,
+                behavior: 'smooth'
+              });
+              
+              console.log(`🎯 Scrolling container from ${currentScrollTop} to ${targetScrollTop}`);
+            } else {
+              console.log(`👁️ Target already visible in container viewport, no scrolling needed`);
+            }
+          } else {
+            console.warn('⚠️ Could not get element coordinates for scrolling');
+          }
+        } catch (scrollError) {
+          console.error('❌ Error during precise scrolling:', scrollError);
+          // Fallback to basic scrollIntoView
+          try {
+            const element = editorRef.current.view.dom.querySelector(`[data-suggestion-id="${suggestion.id}"]`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          } catch (fallbackError) {
+            console.error('❌ Fallback scrolling also failed:', fallbackError);
+          }
         }
         
         // Set highlighted card ID for UI feedback
