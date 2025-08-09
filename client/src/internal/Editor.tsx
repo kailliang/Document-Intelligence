@@ -3,6 +3,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { Highlight } from "./HighlightExtension";
+import { WordLevelStrikethroughExtension } from "./StrikethroughExtension";
 import { MermaidNode } from "./MermaidExtension";
 import "./highlight.css";
 
@@ -20,6 +21,11 @@ const extensions = [
     multicolor: true,
     HTMLAttributes: {
       class: 'text-highlight',
+    },
+  }),
+  WordLevelStrikethroughExtension.configure({
+    HTMLAttributes: {
+      class: 'word-level-strikethrough-extension',
     },
   }),
   MermaidNode.configure({

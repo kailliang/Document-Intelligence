@@ -1,4 +1,5 @@
 import React from 'react';
+import { calculateWordDiff, generateStrikethroughHTML } from '../utils/wordLevelDiff';
 
 interface Suggestion {
   id: string;
@@ -11,6 +12,12 @@ interface Suggestion {
   confidence: number;
   agent: 'technical' | 'legal' | 'novelty' | 'lead';
   created_at: string;
+  // Optional fields for merged suggestions
+  mergedIds?: string[];
+  mergedDescriptions?: string[];
+  mergedTypes?: string[];
+  highestSeverity?: 'high' | 'medium' | 'low';
+  averageConfidence?: number;
 }
 
 interface InlineSuggestionCardProps {
@@ -19,6 +26,7 @@ interface InlineSuggestionCardProps {
   onDismiss: (cardId: string) => void;
   onCopy: (cardId: string) => void;
   onHighlight?: (suggestion: Suggestion) => void;
+  onCardClick?: (suggestion: Suggestion) => void;
   highlightedCardId?: string;
   className?: string;
 }
@@ -29,6 +37,7 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   onDismiss,
   onCopy,
   onHighlight,
+  onCardClick,
   highlightedCardId,
   className = ''
 }) => {
@@ -87,6 +96,19 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
     return 'bg-orange-500';
   };
 
+
+  const generateWordLevelPreviewHTML = (originalText: string, replaceTo: string, severity: string): string => {
+    try {
+      const diffResult = calculateWordDiff(originalText, replaceTo);
+      const html = generateStrikethroughHTML(diffResult, severity);
+      return html;
+    } catch (error) {
+      console.error('Error generating word-level preview:', error);
+      // Fallback to simple display
+      return `<span class="text-gray-500 line-through">${originalText}</span> <span class="text-gray-500 mx-2">→</span> <span class="text-green-600 font-medium">${replaceTo}</span>`;
+    }
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
       <div className="flex items-center gap-2 mb-3">
@@ -94,6 +116,11 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
           {suggestions.length} suggestion{suggestions.length !== 1 ? 's' : ''}
         </span>
+        {suggestions.some(s => s.mergedIds && s.mergedIds.length > 1) && (
+          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+            Merged
+          </span>
+        )}
       </div>
       
       {suggestions.map((suggestion) => (
@@ -103,17 +130,25 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
             highlightedCardId === suggestion.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
           }`}
         >
-          {/* Clickable content area for highlighting */}
+          {/* Clickable content area for document highlighting */}
           <div
-            className={`cursor-pointer ${onHighlight ? 'hover:bg-opacity-80' : ''}`}
-            onClick={() => onHighlight && onHighlight(suggestion)}
-            title={onHighlight ? "Click to highlight text in document" : undefined}
+            className={`cursor-pointer ${onCardClick ? 'hover:bg-opacity-80' : ''}`}
+            onClick={() => {
+              onHighlight && onHighlight(suggestion);
+              onCardClick && onCardClick(suggestion);
+            }}
+            title="Click to preview changes in document"
           >
             {/* Suggestion header */}
             <div className="flex items-center gap-1 mb-3 overflow-hidden">
               {highlightedCardId === suggestion.id && (
                 <span className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-medium animate-pulse shrink-0">
                   Highlighted
+                </span>
+              )}
+              {suggestion.mergedIds && suggestion.mergedIds.length > 1 && (
+                <span className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded-full font-medium shrink-0">
+                  Merged ({suggestion.mergedIds.length})
                 </span>
               )}
             <span className="text-xs font-medium text-gray-600 shrink-0">
@@ -132,13 +167,13 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
               {suggestion.description}
             </p>
 
-            {/* AI suggestion */}
+            {/* AI suggestion with always-visible strikethrough preview */}
             {suggestion.replace_to && (
               <div className="mb-3">
-                <p className="text-sm font-medium text-green-600 mb-1">💡 Suggestion:</p>
+                <p className="text-sm font-medium text-green-600 mb-2">💡 Suggested Change:</p>
                 
                 {/* Confidence display */}
-                <div className="flex items-center gap-2 mb-2 ml-4">
+                <div className="flex items-center gap-2 mb-3 ml-4">
                   <span className="text-xs text-gray-600">Confidence:</span>
                   <div className="flex items-center gap-1">
                     <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -153,11 +188,23 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
                   </div>
                 </div>
                 
-                <div className="bg-white p-3 rounded border">
-                  <p className="text-sm text-gray-700 leading-relaxed font-mono">
-                    {suggestion.replace_to}
-                  </p>
+                {/* Always-visible word-level strikethrough preview */}
+                <div className="bg-gray-50 p-3 rounded border">
+                  <div className="text-sm leading-relaxed">
+                    <div 
+                      dangerouslySetInnerHTML={{
+                        __html: generateWordLevelPreviewHTML(suggestion.original_text, suggestion.replace_to, suggestion.severity)
+                      }}
+                    />
+                  </div>
                 </div>
+                
+                {/* Additional details for merged suggestions */}
+                {suggestion.mergedIds && suggestion.mergedIds.length > 1 && (
+                  <div className="mt-2 text-xs text-purple-600 bg-purple-50 p-2 rounded">
+                    <strong>Combined Issues:</strong> {suggestion.mergedTypes?.join(', ') || 'Multiple'}
+                  </div>
+                )}
               </div>
             )}
           </div>
