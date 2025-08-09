@@ -158,6 +158,8 @@ export default function ChatPanel({
   const [currentProcessingStage, setCurrentProcessingStage] = useState<ProcessingStage | null>(null);
   const [allProcessingStages, setAllProcessingStages] = useState<ProcessingStage[]>([]);
   const [suggestionManager, setSuggestionManager] = useState<SuggestionManager | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false); // Track chat history loading
+  const [hasInitialized, setHasInitialized] = useState(false); // Track if component has initialized
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -263,8 +265,14 @@ export default function ChatPanel({
   useEffect(() => {
     if (!documentId || !documentVersion) {
       setMessages([]);
+      setIsLoadingHistory(false);
+      setHasInitialized(true);
       return;
     }
+
+    // Set loading state immediately when document changes
+    setIsLoadingHistory(true);
+    setHasInitialized(false);
 
     // Debounce to prevent multiple calls during rapid state changes
     const timeoutId = setTimeout(async () => {
@@ -319,6 +327,10 @@ export default function ChatPanel({
         console.error('Failed to load chat history:', error);
         // Start with empty messages on error
         setMessages([]);
+      } finally {
+        // Always clear loading state and mark as initialized
+        setIsLoadingHistory(false);
+        setHasInitialized(true);
       }
     }, 100); // 100ms debounce
 
@@ -965,8 +977,8 @@ export default function ChatPanel({
 
   return (
     <div className={`flex flex-col h-full bg-white rounded-lg shadow-sm relative ${className}`}>
-      {/* Connection status bar */}
-      {(connectionError || readyState !== ReadyState.OPEN) && (
+      {/* Connection status bar - only show if there's a real error or prolonged disconnection */}
+      {(connectionError || (readyState !== ReadyState.OPEN && hasInitialized && !isLoadingHistory)) && (
         <div className={`px-4 py-2 text-xs border-b ${connectionStatus.bgColor}`}>
           <div className="flex items-center justify-between">
             <span className={`flex items-center ${connectionStatus.color}`}>
@@ -990,7 +1002,15 @@ export default function ChatPanel({
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-3">
-        {messages.length === 0 ? (
+        {isLoadingHistory ? (
+          // Show loading indicator while loading chat history
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              <p className="text-sm text-gray-500">Loading chat history...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex items-center justify-center py-8">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-xs text-center shadow-sm">
               <div className="flex items-center justify-center mb-3">
