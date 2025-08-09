@@ -591,9 +591,12 @@ function App() {
           {/* Left sidebar header */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0 h-[52px]">
             {!appState.leftSidebarCollapsed && (
-              <div className="flex items-center space-x-2">
-                <img src={Logo} alt="Logo" className="h-5 flex-shrink-0" />
-                <h3 className="text-xl font-semibold text-gray-400 whitespace-nowrap">Patent Review</h3>
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center space-x-2">
+                  <img src={Logo} alt="Logo" className="h-5 flex-shrink-0" />
+                  <h3 className="text-xl font-semibold text-gray-400 whitespace-nowrap">Projects</h3>
+                </div>
+                <span className="text-sm text-gray-400">{appState.availableDocuments.length} items</span>
               </div>
             )}
             <button
@@ -613,10 +616,6 @@ function App() {
             <div className="flex-1 flex flex-col p-4 overflow-hidden">
               {/* Project selection area */}
               <div className="flex flex-col flex-1 min-h-0">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Project List</h3>
-                  <span className="text-xs text-gray-400 flex-shrink-0">{appState.availableDocuments.length} items</span>
-                </div>
                 <div className="space-y-2 overflow-y-auto flex-1">
                   {appState.availableDocuments.map((doc, index) => (
                     <button
@@ -704,7 +703,7 @@ function App() {
                     <button
                       onClick={createNewVersion}
                       disabled={appState.isLoading}
-                      className="w-full p-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
+                      className="w-full p-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
                     >
                       {appState.isLoading ? 'Creating...' : '+ Create New Version'}
                     </button>
@@ -779,7 +778,7 @@ function App() {
                   <button
                     onClick={() => appState.currentDocument && savePatent(appState.currentDocument.id)}
                     disabled={!appState.currentDocument}
-                    className="w-full p-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+                    className="w-full p-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
                   >
                     💾 Save Document
                   </button>
@@ -787,14 +786,14 @@ function App() {
                   <button
                     onClick={exportToPDF}
                     disabled={!appState.currentDocument}
-                    className="w-full p-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+                    className="w-full p-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
                   >
                     📄 Export PDF
                   </button>
                   <button
                     onClick={exportToMarkdown}
                     disabled={!appState.currentDocument}
-                    className="w-full p-2 text-sm bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+                    className="w-full p-2 text-sm bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
                   >
                     📝 Export Markdown
                   </button>
