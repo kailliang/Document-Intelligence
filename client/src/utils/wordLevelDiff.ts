@@ -51,103 +51,74 @@ function extractWords(segments: WordSegment[]): string[] {
   return segments.filter(seg => seg.isWord).map(seg => seg.word.toLowerCase());
 }
 
+// Legacy Levenshtein algorithm removed - using simpler approach for better accuracy
+
 /**
- * Calculate word-level Levenshtein distance with operation tracking
+ * Simple word difference algorithm for better accuracy
  */
-function calculateWordLevelDiff(originalWords: string[], newWords: string[]): WordDiff[] {
-  const m = originalWords.length;
-  const n = newWords.length;
-  
-  // DP table: dp[i][j] represents minimum operations to transform originalWords[0..i-1] to newWords[0..j-1]
-  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
-  const operations: string[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(''));
-  
-  // Initialize base cases
-  for (let i = 0; i <= m; i++) {
-    dp[i][0] = i;
-    operations[i][0] = 'delete';
-  }
-  for (let j = 0; j <= n; j++) {
-    dp[0][j] = j;
-    operations[0][j] = 'insert';
-  }
-  
-  // Fill DP table
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (originalWords[i - 1] === newWords[j - 1]) {
-        // Words match - keep
-        dp[i][j] = dp[i - 1][j - 1];
-        operations[i][j] = 'keep';
-      } else {
-        // Find minimum cost operation
-        const deleteCost = dp[i - 1][j] + 1;
-        const insertCost = dp[i][j - 1] + 1;
-        const replaceCost = dp[i - 1][j - 1] + 1;
-        
-        const minCost = Math.min(deleteCost, insertCost, replaceCost);
-        dp[i][j] = minCost;
-        
-        if (minCost === replaceCost) {
-          operations[i][j] = 'replace';
-        } else if (minCost === deleteCost) {
-          operations[i][j] = 'delete';
-        } else {
-          operations[i][j] = 'insert';
-        }
-      }
-    }
-  }
-  
-  // Backtrack to construct diff sequence
+function calculateSimpleWordDiff(originalWords: string[], newWords: string[]): WordDiff[] {
   const diffs: WordDiff[] = [];
-  let i = m, j = n;
-  let position = 0;
   
-  while (i > 0 || j > 0) {
-    const op = operations[i][j];
-    
-    switch (op) {
-      case 'keep':
-        diffs.unshift({
-          type: 'keep',
-          originalWord: originalWords[i - 1],
-          newWord: newWords[j - 1],
-          position: position++
-        });
-        i--;
-        j--;
-        break;
-        
-      case 'replace':
-        diffs.unshift({
-          type: 'replace',
-          originalWord: originalWords[i - 1],
-          newWord: newWords[j - 1],
-          position: position++
-        });
-        i--;
-        j--;
-        break;
-        
-      case 'delete':
-        diffs.unshift({
-          type: 'delete',
-          originalWord: originalWords[i - 1],
-          position: position++
-        });
-        i--;
-        break;
-        
-      case 'insert':
-        diffs.unshift({
-          type: 'insert',
-          newWord: newWords[j - 1],
-          position: position++
-        });
-        j--;
-        break;
-    }
+  // First pass: identify common prefix and suffix
+  let commonPrefix = 0;
+  let commonSuffix = 0;
+  
+  // Find common prefix
+  while (commonPrefix < originalWords.length && 
+         commonPrefix < newWords.length && 
+         originalWords[commonPrefix] === newWords[commonPrefix]) {
+    commonPrefix++;
+  }
+  
+  // Find common suffix
+  while (commonSuffix < originalWords.length - commonPrefix && 
+         commonSuffix < newWords.length - commonPrefix && 
+         originalWords[originalWords.length - 1 - commonSuffix] === 
+         newWords[newWords.length - 1 - commonSuffix]) {
+    commonSuffix++;
+  }
+  
+  // Add prefix words (keep)
+  for (let i = 0; i < commonPrefix; i++) {
+    diffs.push({
+      type: 'keep',
+      originalWord: originalWords[i],
+      newWord: newWords[i],
+      position: i
+    });
+  }
+  
+  // Handle middle section (differences)
+  const originalMiddle = originalWords.slice(commonPrefix, originalWords.length - commonSuffix);
+  const newMiddle = newWords.slice(commonPrefix, newWords.length - commonSuffix);
+  
+  // Simple approach: mark all original middle words as delete, all new middle words as insert
+  originalMiddle.forEach((word, index) => {
+    diffs.push({
+      type: 'delete',
+      originalWord: word,
+      position: commonPrefix + index
+    });
+  });
+  
+  newMiddle.forEach((word, index) => {
+    diffs.push({
+      type: 'insert',
+      newWord: word,
+      position: commonPrefix + index
+    });
+  });
+  
+  // Add suffix words (keep)
+  for (let i = 0; i < commonSuffix; i++) {
+    const originalIndex = originalWords.length - commonSuffix + i;
+    const newIndex = newWords.length - commonSuffix + i;
+    diffs.push({
+      type: 'keep',
+      originalWord: originalWords[originalIndex],
+      newWord: newWords[newIndex],
+      position: originalIndex
+    });
   }
   
   return diffs;
@@ -157,9 +128,10 @@ function calculateWordLevelDiff(originalWords: string[], newWords: string[]): Wo
  * Main function to calculate word-level differences
  */
 export function calculateWordDiff(originalText: string, newText: string): DiffResult {
-  console.log('🔍 Calculating word-level diff:');
-  console.log('Original:', originalText);
-  console.log('New:', newText);
+  // Disabled console logging to avoid noise
+  // console.log('🔍 Calculating word-level diff:');
+  // console.log('Original:', originalText);
+  // console.log('New:', newText);
   
   // Tokenize both texts
   const originalSegments = tokenize(originalText);
@@ -169,14 +141,14 @@ export function calculateWordDiff(originalText: string, newText: string): DiffRe
   const originalWords = extractWords(originalSegments);
   const newWords = extractWords(newSegments);
   
-  console.log('Original words:', originalWords);
-  console.log('New words:', newWords);
+  // console.log('Original words:', originalWords);
+  // console.log('New words:', newWords);
   
-  // Calculate differences
-  const diffs = calculateWordLevelDiff(originalWords, newWords);
+  // Use simple algorithm for better accuracy
+  const diffs = calculateSimpleWordDiff(originalWords, newWords);
   const hasChanges = diffs.some(diff => diff.type !== 'keep');
   
-  console.log('Calculated diffs:', diffs);
+  // console.log('Calculated diffs:', diffs);
   
   return {
     diffs,
@@ -224,7 +196,7 @@ export function generateStrikethroughPreview(diffResult: DiffResult): string {
  */
 export function generateStrikethroughHTML(
   diffResult: DiffResult,
-  severityClass: string = 'medium'
+  _severityClass: string = 'medium'  // Unused parameter, kept for API compatibility
 ): string {
   if (!diffResult.hasChanges) {
     return `<span class="text-gray-700">${diffResult.newWords.join(' ')}</span>`;
@@ -232,34 +204,73 @@ export function generateStrikethroughHTML(
   
   const segments: string[] = [];
   
-  diffResult.diffs.forEach(diff => {
+  // Group consecutive delete/insert operations
+  let i = 0;
+  while (i < diffResult.diffs.length) {
+    const diff = diffResult.diffs[i];
+    
     switch (diff.type) {
       case 'keep':
         const word = diff.newWord || diff.originalWord || '';
         segments.push(`<span class="text-gray-700">${word}</span>`);
+        i++;
         break;
         
       case 'delete':
-        const deletedWord = diff.originalWord || '';
-        segments.push(
-          `<span class="strikethrough-${severityClass} line-through">${deletedWord}</span>`
-        );
+        // Collect all consecutive deletes
+        const deletedWords: string[] = [];
+        let j = i;
+        while (j < diffResult.diffs.length && diffResult.diffs[j].type === 'delete') {
+          deletedWords.push(diffResult.diffs[j].originalWord || '');
+          j++;
+        }
+        
+        // Collect all consecutive inserts that follow
+        const insertedWords: string[] = [];
+        while (j < diffResult.diffs.length && diffResult.diffs[j].type === 'insert') {
+          insertedWords.push(diffResult.diffs[j].newWord || '');
+          j++;
+        }
+        
+        // Generate combined delete + insert HTML
+        if (deletedWords.length > 0) {
+          const deletedHTML = deletedWords.map(word => 
+            `<span class="text-red-600 line-through decoration-red-500 decoration-2">${word}</span>`
+          ).join(' ');
+          segments.push(deletedHTML);
+        }
+        
+        if (insertedWords.length > 0) {
+          const insertedHTML = insertedWords.map(word => 
+            `<span class="text-green-600 font-medium">${word}</span>`
+          ).join(' ');
+          segments.push(insertedHTML);
+        }
+        
+        i = j;
         break;
         
       case 'insert':
+        // Handle standalone inserts (shouldn't happen with our algorithm, but just in case)
         const insertedWord = diff.newWord || '';
         segments.push(`<span class="text-green-600 font-medium">${insertedWord}</span>`);
+        i++;
         break;
         
       case 'replace':
         const originalWord = diff.originalWord || '';
         const newWord = diff.newWord || '';
         segments.push(
-          `<span class="strikethrough-${severityClass} line-through">${originalWord}</span> <span class="text-green-600 font-medium">${newWord}</span>`
+          `<span class="text-red-600 line-through decoration-red-500 decoration-2">${originalWord}</span> <span class="text-green-600 font-medium">${newWord}</span>`
         );
+        i++;
+        break;
+        
+      default:
+        i++;
         break;
     }
-  });
+  }
   
   return segments.join(' ');
 }

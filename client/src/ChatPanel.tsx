@@ -7,7 +7,6 @@ import ProcessingStages from './components/ProcessingStages';
 import { findTextInDocument, replaceText } from './internal/HighlightExtension';
 import { mergeSuggestions } from './utils/suggestionMerging';
 import { SuggestionManager } from './services/suggestionManager';
-import { calculateWordDiff, optimizeDiff } from './utils/wordLevelDiff';
 
 mermaid.initialize({ startOnLoad: true, theme: 'default' });
 
@@ -556,103 +555,64 @@ export default function ChatPanel({
     }
   };
 
-  // Handle suggestion card highlighting
+  // Restore old highlighting logic that highlights entire original text sentence
   const handleSuggestionHighlight = (suggestion: Suggestion) => {
-    console.log('🖱️ Clicking suggestion card for highlighting:', suggestion);
+    console.log('🔗 Highlighting suggestion:', suggestion.id);
     
     if (!editorRef?.current) {
       console.error('❌ Editor instance not available');
       return;
     }
 
-    // Clear previous highlight timeout
-    if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
-      highlightTimeoutRef.current = null;
-    }
-
-    // Clear existing highlights
-    editorRef.current.chain().clearTemporaryHighlights().run();
-
-    // Find text in document
-    const { state } = editorRef.current;
-    const searchText = suggestion.original_text;
-    
-    if (!searchText || !searchText.trim()) {
-      console.warn('⚠️ No original text available for highlighting');
-      return;
-    }
-
-    console.log('🔍 Searching for text:', searchText.substring(0, 50) + '...');
-    
     try {
-      const textPosition = findTextInDocument(state.doc, searchText);
+      // Find the original text in document using the existing utility
+      const textLocation = findTextInDocument(editorRef.current.state.doc, suggestion.original_text);
       
-      if (textPosition) {
-        console.log('✅ Text found at position:', textPosition);
+      if (!textLocation) {
+        console.error('❌ Could not find text in document:', suggestion.original_text);
+        return;
+      }
+
+      // Apply temporary highlight to the original text without any strikethrough
+      const success = editorRef.current.commands.addTemporaryHighlight(
+        textLocation.from,
+        textLocation.to,
+        suggestion.severity
+      );
+
+      if (success) {
+        console.log(`✅ Old-style highlighting applied to suggestion ${suggestion.id}`);
         
-        // Apply temporary highlight with severity-based styling
-        const severityClass = suggestion.severity || 'medium';
-        editorRef.current
-          .chain()
-          .addTemporaryHighlight(textPosition.from, textPosition.to, severityClass)
-          .run();
+        // Scroll the highlighted text to the center of the window
+        const startPos = editorRef.current.view.coordsAtPos(textLocation.from);
+        if (startPos) {
+          startPos.node?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'center'
+          });
+        }
         
-        // Scroll to the highlighted text
-        editorRef.current
-          .chain()
-          .focus()
-          .setTextSelection(textPosition.from)
-          .scrollIntoView()
-          .run();
-        
-        // Set highlighted state
+        // Set highlighted card ID for UI feedback
         setHighlightedCardId(suggestion.id);
         
-        // Auto-clear highlight after 5 seconds
+        // Clear highlight after 3 seconds
+        if (highlightTimeoutRef.current) {
+          clearTimeout(highlightTimeoutRef.current);
+        }
+        
         highlightTimeoutRef.current = window.setTimeout(() => {
-          editorRef.current?.chain().clearTemporaryHighlights().run();
+          if (editorRef.current) {
+            editorRef.current.commands.clearTemporaryHighlights();
+          }
           setHighlightedCardId(null);
           highlightTimeoutRef.current = null;
-        }, 5000);
-        
-        console.log('🎯 Text highlighted and scrolled into view successfully');
+        }, 3000);
       } else {
-        console.warn('⚠️ Text not found in document');
-        
-        // Try alternative search with partial matching
-        console.log('🔄 Attempting fuzzy text search...');
-        const trimmedSearch = searchText.trim().substring(0, 30);
-        const fallbackPosition = findTextInDocument(state.doc, trimmedSearch);
-        
-        if (fallbackPosition) {
-          console.log('✅ Fallback text found at position:', fallbackPosition);
-          editorRef.current
-            .chain()
-            .addTemporaryHighlight(fallbackPosition.from, fallbackPosition.to, 'medium')
-            .run();
-          
-          // Scroll to the highlighted text
-          editorRef.current
-            .chain()
-            .focus()
-            .setTextSelection(fallbackPosition.from)
-            .scrollIntoView()
-            .run();
-          
-          setHighlightedCardId(suggestion.id);
-          
-          highlightTimeoutRef.current = window.setTimeout(() => {
-            editorRef.current?.chain().clearTemporaryHighlights().run();
-            setHighlightedCardId(null);
-            highlightTimeoutRef.current = null;
-          }, 5000);
-        } else {
-          console.error('❌ Text highlighting failed - text not found');
-        }
+        console.error('❌ Failed to apply old-style highlight');
       }
     } catch (error) {
-      console.error('❌ Error during text highlighting:', error);
+      console.error('❌ Error applying old-style highlight:', error);
     }
   };
 
@@ -690,8 +650,7 @@ export default function ChatPanel({
           highlightTimeoutRef.current = null;
         }
         editorRef.current.chain().clearTemporaryHighlights().run();
-        editorRef.current.commands.clearAllWordStrikethroughs();
-        setHighlightedCardId(null);
+        editorRef.current.commands.clearAllSentenceHighlights();
         
         console.log(`📊 SuggestionManager stats:`, suggestionManager.getStatistics());
         
@@ -903,105 +862,6 @@ export default function ChatPanel({
     }
   };
 
-  // Handle card click to show word-level strikethrough in document
-  const handleCardClick = (suggestion: Suggestion) => {
-    console.log('🔗 Card clicked for word-level preview:', suggestion.id);
-    
-    if (!editorRef?.current) {
-      console.error('❌ Editor instance not available');
-      return;
-    }
-
-    try {
-      // Get current document content
-      getCurrentDocumentContent?.() || editorRef.current.getHTML();
-      
-      // Find sentence containing the suggestion text
-      const textLocation = findTextInDocument(editorRef.current.state.doc, suggestion.original_text);
-      
-      if (!textLocation) {
-        console.error('❌ Could not find text in document:', suggestion.original_text);
-        return;
-      }
-
-      // Find sentence boundaries using precise method
-      const docText = editorRef.current.getText();
-      const originalTextStart = textLocation.from;
-      const originalTextEnd = textLocation.to;
-      
-      console.log('🎯 Original text location in document:', originalTextStart, '-', originalTextEnd);
-      
-      // Expand to find sentence boundaries from the original text position
-      let sentenceStart = originalTextStart;
-      let sentenceEnd = originalTextEnd;
-      
-      // Expand backwards to find sentence start (look for . ! ? or document start)
-      while (sentenceStart > 0) {
-        const char = docText[sentenceStart - 1];
-        if (char.match(/[.!?]/)) {
-          break; // Found sentence boundary
-        }
-        sentenceStart--;
-      }
-      
-      // Expand forwards to find sentence end (look for . ! ? or document end)
-      while (sentenceEnd < docText.length) {
-        const char = docText[sentenceEnd];
-        if (char.match(/[.!?]/)) {
-          sentenceEnd++; // Include the punctuation
-          break;
-        }
-        sentenceEnd++;
-      }
-      
-      // Trim whitespace at boundaries
-      while (sentenceStart < docText.length && docText[sentenceStart].match(/\s/)) {
-        sentenceStart++;
-      }
-      while (sentenceEnd > sentenceStart && docText[sentenceEnd - 1].match(/\s/)) {
-        sentenceEnd--;
-      }
-      
-      const targetSentence = docText.substring(sentenceStart, sentenceEnd);
-      const originalTextOffsetInSentence = originalTextStart - sentenceStart;
-      
-      console.log('📝 Found sentence:', targetSentence);
-      console.log('📍 Sentence boundaries:', sentenceStart, '-', sentenceEnd);
-      console.log('📐 Original text offset in sentence:', originalTextOffsetInSentence);
-
-      // Calculate word-level diff directly for reliability
-      console.log('🔍 Calculating word diff directly for:', suggestion.original_text, '→', suggestion.replace_to);
-      const wordDiffResult = optimizeDiff(calculateWordDiff(suggestion.original_text, suggestion.replace_to));
-      
-      console.log('📊 Word diff result:', wordDiffResult);
-      
-      if (!wordDiffResult.hasChanges) {
-        console.warn('⚠️ No word-level changes detected');
-        return;
-      }
-
-      // Show word-level strikethrough using new extension with precise positioning
-      const success = editorRef.current.commands.showWordLevelStrikethrough({
-        suggestionId: suggestion.id,
-        sentenceStart,
-        sentenceEnd,
-        originalTextOffsetInSentence,
-        wordDiffs: wordDiffResult,
-        originalText: suggestion.original_text,
-        severity: suggestion.severity,
-        replacement: suggestion.replace_to,
-      });
-
-      if (success) {
-        console.log(`✅ Word-level strikethrough displayed for suggestion ${suggestion.id}`);
-      } else {
-        console.error('❌ Failed to display word-level strikethrough');
-      }
-
-    } catch (error) {
-      console.error('❌ Error showing word-level strikethrough:', error);
-    }
-  };
 
   // Handle Enter key for sending
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1105,8 +965,7 @@ export default function ChatPanel({
                         onDismiss={handleSuggestionDismiss}
                         onCopy={handleSuggestionCopy}
                         onHighlight={handleSuggestionHighlight}
-                        onCardClick={handleCardClick}
-                        highlightedCardId={highlightedCardId || undefined}
+                        highlightedCardId={highlightedCardId}
                       />
                     </div>
                   ) : (

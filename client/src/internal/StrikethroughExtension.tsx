@@ -1,61 +1,48 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { findWordPositions, DiffResult } from '../utils/wordLevelDiff';
 
 export interface WordLevelStrikethroughOptions {
   HTMLAttributes: Record<string, any>;
 }
 
-interface WordStrikethroughState {
+interface SentenceHighlightState {
   decorations: DecorationSet;
   activeSuggestions: Map<string, {
-    wordPositions: Array<{ start: number; end: number; type: 'delete' | 'replace'; originalWord: string }>;
     sentencePosition: { start: number; end: number };
-    severity: string;
-    replacement: string;
     timeoutId: number;
   }>;
 }
 
-interface WordHighlightParams {
+interface SentenceHighlightParams {
   suggestionId: string;
   sentenceStart: number;
   sentenceEnd: number;
-  originalTextOffsetInSentence: number; // New: offset of original text within the sentence
-  wordDiffs: DiffResult;
-  originalText: string;
-  severity: string;
-  replacement: string;
 }
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
-    wordLevelStrikethrough: {
+    sentenceHighlight: {
       /**
-       * Show word-level strikethrough for a suggestion
+       * Show sentence highlight for a suggestion
        */
-      showWordLevelStrikethrough: (params: WordHighlightParams) => ReturnType;
+      showSentenceHighlight: (params: SentenceHighlightParams) => ReturnType;
       /**
-       * Clear all word-level strikethroughs
+       * Clear all sentence highlights
        */
-      clearAllWordStrikethroughs: () => ReturnType;
+      clearAllSentenceHighlights: () => ReturnType;
       /**
-       * Clear specific suggestion strikethrough
+       * Clear specific suggestion highlight
        */
-      clearSuggestionStrikethrough: (suggestionId: string) => ReturnType;
-      /**
-       * Get active strikethroughs
-       */
-      getActiveWordStrikethroughs: () => ReturnType;
+      clearSuggestionHighlight: (suggestionId: string) => ReturnType;
     };
   }
 }
 
-const wordStrikethroughPluginKey = new PluginKey<WordStrikethroughState>('wordStrikethrough');
+const sentenceHighlightPluginKey = new PluginKey<SentenceHighlightState>('sentenceHighlight');
 
-export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroughOptions>({
-  name: 'wordLevelStrikethrough',
+export const SentenceHighlightExtension = Mark.create<WordLevelStrikethroughOptions>({
+  name: 'sentenceHighlight',
 
   addOptions() {
     return {
@@ -114,13 +101,13 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
 
   addCommands() {
     return {
-      showWordLevelStrikethrough:
-        (params: WordHighlightParams) =>
+      showSentenceHighlight:
+        (params: SentenceHighlightParams) =>
         ({ state, view }) => {
-          const pluginState = wordStrikethroughPluginKey.getState(state);
+          const pluginState = sentenceHighlightPluginKey.getState(state);
           if (!pluginState) return false;
 
-          console.log('🎯 Showing word-level strikethrough for:', params.suggestionId);
+          console.log('🎯 Showing sentence highlight for:', params.suggestionId);
 
           // Clear existing suggestion if present
           const existing = pluginState.activeSuggestions.get(params.suggestionId);
@@ -129,101 +116,53 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
             pluginState.activeSuggestions.delete(params.suggestionId);
           }
 
-          // Find word positions in the original text (relative to original text)
-          const wordPositions = findWordPositions(params.originalText, params.wordDiffs);
-          
-          console.log('🔤 Word positions in original text:', wordPositions);
-          
-          // Create decorations for word-level strikethroughs and sentence highlight
-          const decorations: Decoration[] = [];
-
-          // 1. Sentence background highlight
+          // Create sentence highlight decoration
           const sentenceDecoration = Decoration.inline(params.sentenceStart, params.sentenceEnd, {
             class: 'sentence-highlight sentence-highlight-3s',
             'data-sentence-highlight': 'true',
             'data-suggestion-id': params.suggestionId,
           });
-          decorations.push(sentenceDecoration);
-
-          // 2. Word-level strikethroughs with correct absolute positioning
-          wordPositions.forEach((wordPos) => {
-            // Calculate absolute position in document:
-            // sentence start + offset of original text in sentence + word position in original text
-            const absoluteStart = params.sentenceStart + params.originalTextOffsetInSentence + wordPos.start;
-            const absoluteEnd = params.sentenceStart + params.originalTextOffsetInSentence + wordPos.end;
-            
-            console.log(`📍 Word "${wordPos.originalWord}" absolute position: ${absoluteStart}-${absoluteEnd}`);
-            
-            // Validate position is within document bounds and sentence bounds
-            if (absoluteStart >= 0 && absoluteEnd <= tr.doc.content.size && 
-                absoluteStart >= params.sentenceStart && absoluteEnd <= params.sentenceEnd &&
-                absoluteStart < absoluteEnd) { // Ensure valid range
-              
-              try {
-                const wordDecoration = Decoration.inline(absoluteStart, absoluteEnd, {
-                  class: `word-strikethrough word-strikethrough-${params.severity} ${wordPos.type === 'delete' ? 'strikethrough-delete' : 'strikethrough-replace'}`,
-                  'data-word-type': wordPos.type,
-                  'data-severity': params.severity,
-                  'data-suggestion-id': params.suggestionId,
-                  'data-original-word': wordPos.originalWord,
-                }, {
-                  // Ensure decoration is non-inclusive to prevent text modification
-                  inclusiveStart: false,
-                  inclusiveEnd: false,
-                });
-                decorations.push(wordDecoration);
-                console.log(`✅ Created decoration for word "${wordPos.originalWord}" at ${absoluteStart}-${absoluteEnd}`);
-              } catch (error) {
-                console.error(`❌ Failed to create decoration for word "${wordPos.originalWord}":`, error);
-              }
-            } else {
-              console.warn(`⚠️ Invalid word position: ${absoluteStart}-${absoluteEnd}, document size: ${tr.doc.content.size}, sentence: ${params.sentenceStart}-${params.sentenceEnd}`);
-            }
-          });
 
           // Set timeout to auto-clear after 3 seconds
           const timeoutId = window.setTimeout(() => {
             const currentState = view.state;
-            const currentPluginState = wordStrikethroughPluginKey.getState(currentState);
+            const currentPluginState = sentenceHighlightPluginKey.getState(currentState);
             if (currentPluginState?.activeSuggestions.has(params.suggestionId)) {
               currentPluginState.activeSuggestions.delete(params.suggestionId);
-              const tr = currentState.tr.setMeta(wordStrikethroughPluginKey, {
+              const tr = currentState.tr.setMeta(sentenceHighlightPluginKey, {
                 action: 'remove',
                 suggestionId: params.suggestionId,
               });
               view.dispatch(tr);
-              console.log('⏱️ Auto-cleared word strikethrough after 3s:', params.suggestionId);
+              console.log('⏱️ Auto-cleared sentence highlight after 3s:', params.suggestionId);
             }
           }, 3000);
 
           // Store suggestion state
           pluginState.activeSuggestions.set(params.suggestionId, {
-            wordPositions,
             sentencePosition: { start: params.sentenceStart, end: params.sentenceEnd },
-            severity: params.severity,
-            replacement: params.replacement,
             timeoutId,
           });
 
-          // Dispatch transaction with decorations
-          const tr = state.tr.setMeta(wordStrikethroughPluginKey, {
+          // Dispatch transaction with decoration
+          const tr = state.tr.setMeta(sentenceHighlightPluginKey, {
             action: 'add',
             suggestionId: params.suggestionId,
-            decorations,
+            decorations: [sentenceDecoration],
           });
           view.dispatch(tr);
           
-          console.log(`✅ Applied ${decorations.length} decorations for suggestion ${params.suggestionId}`);
+          console.log('✅ Applied sentence highlight for suggestion', params.suggestionId);
           return true;
         },
 
-      clearAllWordStrikethroughs:
+      clearAllSentenceHighlights:
         () =>
         ({ state, view }) => {
-          const pluginState = wordStrikethroughPluginKey.getState(state);
+          const pluginState = sentenceHighlightPluginKey.getState(state);
           if (!pluginState) return false;
 
-          console.log('🧹 Clearing all word strikethroughs');
+          console.log('🧹 Clearing all sentence highlights');
 
           // Clear all timeouts
           pluginState.activeSuggestions.forEach((suggestion) => {
@@ -231,42 +170,33 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
           });
           pluginState.activeSuggestions.clear();
 
-          const tr = state.tr.setMeta(wordStrikethroughPluginKey, {
+          const tr = state.tr.setMeta(sentenceHighlightPluginKey, {
             action: 'clear-all',
           });
           view.dispatch(tr);
           return true;
         },
 
-      clearSuggestionStrikethrough:
+      clearSuggestionHighlight:
         (suggestionId: string) =>
         ({ state, view }) => {
-          const pluginState = wordStrikethroughPluginKey.getState(state);
+          const pluginState = sentenceHighlightPluginKey.getState(state);
           if (!pluginState) return false;
 
           const suggestion = pluginState.activeSuggestions.get(suggestionId);
           if (!suggestion) return false;
 
-          console.log('🧹 Clearing strikethrough for suggestion:', suggestionId);
+          console.log('🧹 Clearing highlight for suggestion:', suggestionId);
 
           // Clear timeout
           clearTimeout(suggestion.timeoutId);
           pluginState.activeSuggestions.delete(suggestionId);
 
-          const tr = state.tr.setMeta(wordStrikethroughPluginKey, {
+          const tr = state.tr.setMeta(sentenceHighlightPluginKey, {
             action: 'remove',
             suggestionId,
           });
           view.dispatch(tr);
-          return true;
-        },
-
-      getActiveWordStrikethroughs:
-        () =>
-        ({ state }) => {
-          const pluginState = wordStrikethroughPluginKey.getState(state);
-          const activeCount = pluginState?.activeSuggestions.size || 0;
-          console.log(`📊 Active word strikethroughs: ${activeCount}`);
           return true;
         },
     };
@@ -275,29 +205,29 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: wordStrikethroughPluginKey,
+        key: sentenceHighlightPluginKey,
         state: {
-          init(): WordStrikethroughState {
-            console.log('🔧 Word-level strikethrough plugin initialized');
+          init(): SentenceHighlightState {
+            console.log('🔧 Sentence highlight plugin initialized');
             return {
               decorations: DecorationSet.empty,
               activeSuggestions: new Map(),
             };
           },
-          apply(tr, pluginState: WordStrikethroughState): WordStrikethroughState {
-            const meta = tr.getMeta(wordStrikethroughPluginKey);
+          apply(tr, pluginState: SentenceHighlightState): SentenceHighlightState {
+            const meta = tr.getMeta(sentenceHighlightPluginKey);
             
             if (meta) {
               switch (meta.action) {
                 case 'add':
-                  console.log(`🎨 Adding decorations for suggestion: ${meta.suggestionId}`);
+                  console.log(`🎨 Adding sentence highlight for suggestion: ${meta.suggestionId}`);
                   return {
                     ...pluginState,
                     decorations: pluginState.decorations.add(tr.doc, meta.decorations || []),
                   };
                   
                 case 'remove':
-                  console.log(`🗑️ Removing decorations for suggestion: ${meta.suggestionId}`);
+                  console.log(`🗑️ Removing sentence highlight for suggestion: ${meta.suggestionId}`);
                   // Get all current decorations and filter out the ones for this suggestion
                   const decorationsToKeep: Decoration[] = [];
                   const allDecorations = pluginState.decorations.find();
@@ -317,7 +247,7 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
                   };
                   
                 case 'clear-all':
-                  console.log('🧹 Clearing all decorations');
+                  console.log('🧹 Clearing all sentence highlights');
                   return {
                     ...pluginState,
                     decorations: DecorationSet.empty,
@@ -335,7 +265,7 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
         },
         props: {
           decorations(state) {
-            const pluginState = wordStrikethroughPluginKey.getState(state);
+            const pluginState = sentenceHighlightPluginKey.getState(state);
             return pluginState?.decorations || DecorationSet.empty;
           },
         },
@@ -345,4 +275,5 @@ export const WordLevelStrikethroughExtension = Mark.create<WordLevelStrikethroug
 });
 
 // Export both the old extension name for compatibility and the new one
-export const StrikethroughExtension = WordLevelStrikethroughExtension;
+export const WordLevelStrikethroughExtension = SentenceHighlightExtension;
+export const StrikethroughExtension = SentenceHighlightExtension;

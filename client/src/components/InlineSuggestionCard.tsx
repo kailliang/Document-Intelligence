@@ -26,8 +26,7 @@ interface InlineSuggestionCardProps {
   onDismiss: (cardId: string) => void;
   onCopy: (cardId: string) => void;
   onHighlight?: (suggestion: Suggestion) => void;
-  onCardClick?: (suggestion: Suggestion) => void;
-  highlightedCardId?: string;
+  highlightedCardId?: string | null;
   className?: string;
 }
 
@@ -37,7 +36,6 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   onDismiss,
   onCopy,
   onHighlight,
-  onCardClick,
   highlightedCardId,
   className = ''
 }) => {
@@ -97,6 +95,7 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   };
 
 
+  // Generate word-level strikethrough preview with console logging disabled
   const generateWordLevelPreviewHTML = (originalText: string, replaceTo: string, severity: string): string => {
     try {
       const diffResult = calculateWordDiff(originalText, replaceTo);
@@ -126,29 +125,27 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
       {suggestions.map((suggestion) => (
         <div
           key={suggestion.id}
-          className={`p-3 rounded-lg border ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full ${
-            highlightedCardId === suggestion.id ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
-          }`}
+          className={`p-3 rounded-lg border ${getSeverityColor(suggestion.severity)} transition-all duration-200 w-full`}
         >
           {/* Clickable content area for document highlighting */}
           <div
-            className={`cursor-pointer ${onCardClick ? 'hover:bg-opacity-80' : ''}`}
+            className={`cursor-pointer ${onHighlight ? 'hover:bg-opacity-80' : ''}`}
             onClick={() => {
+              // Use old highlighting logic that highlights entire original text
               onHighlight && onHighlight(suggestion);
-              onCardClick && onCardClick(suggestion);
             }}
-            title="Click to preview changes in document"
+            title="Click to highlight original text in document"
           >
             {/* Suggestion header */}
             <div className="flex items-center gap-1 mb-3 overflow-hidden">
-              {highlightedCardId === suggestion.id && (
-                <span className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-medium animate-pulse shrink-0">
-                  Highlighted
-                </span>
-              )}
               {suggestion.mergedIds && suggestion.mergedIds.length > 1 && (
                 <span className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded-full font-medium shrink-0">
                   Merged ({suggestion.mergedIds.length})
+                </span>
+              )}
+              {highlightedCardId === suggestion.id && (
+                <span className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-medium animate-pulse shrink-0">
+                  Highlighted
                 </span>
               )}
             <span className="text-xs font-medium text-gray-600 shrink-0">
