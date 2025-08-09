@@ -193,7 +193,7 @@ export const Highlight = Mark.create<HighlightOptions>({
 export function findTextInDocument(doc: any, searchText: string): { from: number; to: number } | null {
   let result: { from: number; to: number } | null = null;
   
-  // Normalize search text - handle HTML entities and whitespace
+  // Normalize search text - handle HTML entities, whitespace, and strikethrough formatting
   const normalizedSearch = searchText
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
@@ -203,19 +203,41 @@ export function findTextInDocument(doc: any, searchText: string): { from: number
     .toLowerCase()
     .trim();
 
-  // First try: exact match
+  // Helper function to normalize text content from editor nodes
+  const normalizeNodeText = (text: string) => {
+    return text
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+  };
+
+  // Helper function to extract plain text from node, handling special formatting
+  const extractPlainText = (node: any): string => {
+    if (node.isText) {
+      return node.text || '';
+    }
+    
+    let text = '';
+    node.forEach((childNode: any) => {
+      if (childNode.isText) {
+        text += childNode.text || '';
+      } else {
+        // Recursively extract text from child nodes
+        text += extractPlainText(childNode);
+      }
+    });
+    return text;
+  };
+
+  // First try: exact match in text nodes
   doc.descendants((node: any, pos: number) => {
     if (result) return false;
 
     if (node.isText && node.text) {
-      const normalizedText = node.text
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .toLowerCase();
-        
+      const normalizedText = normalizeNodeText(node.text);
       const index = normalizedText.indexOf(normalizedSearch);
       
       if (index !== -1) {
@@ -228,7 +250,49 @@ export function findTextInDocument(doc: any, searchText: string): { from: number
     }
   });
 
-  // Second try: fuzzy matching for shorter text (first 30 chars)
+  // Second try: match across parent nodes (handles spans and formatting)
+  if (!result) {
+    doc.descendants((node: any, pos: number) => {
+      if (result) return false;
+
+      // Check if node has children (like paragraph, spans, etc.)
+      if (!node.isText && node.content && node.content.size > 0) {
+        const plainText = extractPlainText(node);
+        const normalizedText = normalizeNodeText(plainText);
+        const index = normalizedText.indexOf(normalizedSearch);
+        
+        if (index !== -1) {
+          // Find the actual position within the node structure
+          let currentPos = 0;
+          let foundPos = -1;
+          
+          node.descendants((childNode: any, childPos: number) => {
+            if (foundPos !== -1) return false;
+            
+            if (childNode.isText && childNode.text) {
+              const childText = normalizeNodeText(childNode.text);
+              if (currentPos <= index && currentPos + childText.length > index) {
+                const relativeIndex = index - currentPos;
+                foundPos = pos + childPos + relativeIndex;
+                return false;
+              }
+              currentPos += childText.length;
+            }
+          });
+          
+          if (foundPos !== -1) {
+            result = {
+              from: foundPos,
+              to: foundPos + normalizedSearch.length,
+            };
+            return false;
+          }
+        }
+      }
+    });
+  }
+
+  // Third try: fuzzy matching for shorter text (first 30 chars)
   if (!result && normalizedSearch.length > 10) {
     const shortSearch = normalizedSearch.substring(0, 30);
     
@@ -236,14 +300,7 @@ export function findTextInDocument(doc: any, searchText: string): { from: number
       if (result) return false;
 
       if (node.isText && node.text) {
-        const normalizedText = node.text
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&amp;/g, '&')
-          .replace(/\s+/g, ' ')
-          .toLowerCase();
-          
+        const normalizedText = normalizeNodeText(node.text);
         const index = normalizedText.indexOf(shortSearch);
         
         if (index !== -1) {
@@ -266,15 +323,42 @@ export function replaceText(editor: any, searchText: string, replaceWith: string
   const result = findTextInDocument(state.doc, searchText);
 
   if (result) {
-    editor
-      .chain()
-      .focus()
-      .setTextSelection(result)
-      .deleteSelection()
-      .insertContent(replaceWith)
-      .run();
-    return true;
+    try {
+      console.log(`🔄 Replacing text from ${result.from} to ${result.to}`);
+      console.log(`🔍 Original: "${searchText}"`);
+      console.log(`➡️ Replace with: "${replaceWith}"`);
+      
+      // Use a transaction to replace text and remove any formatting
+      const transaction = state.tr
+        .delete(result.from, result.to)
+        .insertText(replaceWith, result.from);
+      
+      // Apply the transaction
+      editor.view.dispatch(transaction);
+      
+      console.log(`✅ Text replacement successful`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Text replacement failed:`, error);
+      
+      // Fallback to the original chain method
+      try {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(result)
+          .deleteSelection()
+          .insertContent(replaceWith)
+          .run();
+        console.log(`✅ Text replacement successful (fallback method)`);
+        return true;
+      } catch (fallbackError) {
+        console.error(`❌ Fallback text replacement also failed:`, fallbackError);
+        return false;
+      }
+    }
   }
 
+  console.warn(`⚠️ Text not found for replacement: "${searchText}"`);
   return false;
 }

@@ -199,7 +199,7 @@ export function generateStrikethroughHTML(
   _severityClass: string = 'medium'  // Unused parameter, kept for API compatibility
 ): string {
   if (!diffResult.hasChanges) {
-    return `<span class="text-gray-700">${diffResult.newWords.join(' ')}</span>`;
+    return `<span style="color: #374151;">${diffResult.newWords.join(' ')}</span>`;
   }
   
   const segments: string[] = [];
@@ -212,7 +212,7 @@ export function generateStrikethroughHTML(
     switch (diff.type) {
       case 'keep':
         const word = diff.newWord || diff.originalWord || '';
-        segments.push(`<span class="text-gray-700">${word}</span>`);
+        segments.push(`<span style="color: #374151;">${word}</span>`);
         i++;
         break;
         
@@ -232,17 +232,17 @@ export function generateStrikethroughHTML(
           j++;
         }
         
-        // Generate combined delete + insert HTML
+        // Generate combined delete + insert HTML using custom CSS classes
         if (deletedWords.length > 0) {
           const deletedHTML = deletedWords.map(word => 
-            `<span class="text-red-600 line-through decoration-red-500 decoration-2">${word}</span>`
+            `<span style="color: #dc2626; text-decoration: line-through; text-decoration-color: #dc2626; text-decoration-thickness: 2px; background-color: rgba(220, 38, 38, 0.1); padding: 2px;">${word}</span>`
           ).join(' ');
           segments.push(deletedHTML);
         }
         
         if (insertedWords.length > 0) {
           const insertedHTML = insertedWords.map(word => 
-            `<span class="text-green-600 font-medium">${word}</span>`
+            `<span style="color: #16a34a; font-weight: 600; background-color: rgba(22, 163, 74, 0.1); padding: 2px;">${word}</span>`
           ).join(' ');
           segments.push(insertedHTML);
         }
@@ -253,7 +253,7 @@ export function generateStrikethroughHTML(
       case 'insert':
         // Handle standalone inserts (shouldn't happen with our algorithm, but just in case)
         const insertedWord = diff.newWord || '';
-        segments.push(`<span class="text-green-600 font-medium">${insertedWord}</span>`);
+        segments.push(`<span style="color: #16a34a; font-weight: 600; background-color: rgba(22, 163, 74, 0.1); padding: 2px;">${insertedWord}</span>`);
         i++;
         break;
         
@@ -261,7 +261,7 @@ export function generateStrikethroughHTML(
         const originalWord = diff.originalWord || '';
         const newWord = diff.newWord || '';
         segments.push(
-          `<span class="text-red-600 line-through decoration-red-500 decoration-2">${originalWord}</span> <span class="text-green-600 font-medium">${newWord}</span>`
+          `<span style="color: #dc2626; text-decoration: line-through; text-decoration-color: #dc2626; text-decoration-thickness: 2px; background-color: rgba(220, 38, 38, 0.1); padding: 2px;">${originalWord}</span> <span style="color: #16a34a; font-weight: 600; background-color: rgba(22, 163, 74, 0.1); padding: 2px;">${newWord}</span>`
         );
         i++;
         break;

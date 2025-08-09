@@ -101,8 +101,8 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
       return html;
     } catch (error) {
       console.error('Error generating word-level preview:', error);
-      // Fallback to simple display
-      return `<span class="text-gray-500 line-through">${originalText}</span> <span class="text-gray-500 mx-2">→</span> <span class="text-green-600 font-medium">${replaceTo}</span>`;
+      // Fallback to simple display with inline styles
+      return `<span style="color: #dc2626; text-decoration: line-through; text-decoration-color: #dc2626; text-decoration-thickness: 2px; background-color: rgba(220, 38, 38, 0.1); padding: 2px;">${originalText}</span> <span style="color: #6b7280; margin: 0 8px;">→</span> <span style="color: #16a34a; font-weight: 600; background-color: rgba(22, 163, 74, 0.1); padding: 2px;">${replaceTo}</span>`;
     }
   };
 
