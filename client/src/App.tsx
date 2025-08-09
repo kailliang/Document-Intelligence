@@ -55,6 +55,11 @@ interface AppState {
     isOpen: boolean;
     versionNumber: number | null;
   };
+  aiStatus: {                     // AI assistant status
+    isConnected: boolean;
+    isProcessing: boolean;
+    statusMessage: string;
+  };
 }
 
 function App() {
@@ -70,6 +75,11 @@ function App() {
     deleteDialog: {
       isOpen: false,
       versionNumber: null
+    },
+    aiStatus: {
+      isConnected: false,
+      isProcessing: false,
+      statusMessage: 'Connecting...'
     },
   });
 
@@ -338,6 +348,20 @@ function App() {
   const handleEditorReady = useCallback((editor: any) => {
     editorRef.current = editor;
     console.log('📝 Editor instance ready', editor);
+  }, []);
+
+  /**
+   * Handle AI status updates from ChatPanel
+   */
+  const handleAIStatusChange = useCallback((isConnected: boolean, isProcessing: boolean, statusMessage: string) => {
+    setAppState(prev => ({
+      ...prev,
+      aiStatus: {
+        isConnected,
+        isProcessing,
+        statusMessage
+      }
+    }));
   }, []);
 
   /**
@@ -839,10 +863,17 @@ function App() {
                 }
               </span>
 
-              {/* AI Assistant status */}
-              <span className="flex items-center text-blue-600">
-                <div className="w-2 h-2 rounded-full mr-2 bg-blue-400"></div>
-                AI Ready
+              {/* AI Assistant status - Dynamic */}
+              <span className={`flex items-center ${
+                !appState.aiStatus.isConnected ? 'text-red-600' :
+                appState.aiStatus.isProcessing ? 'text-yellow-600' : 'text-green-600'
+              }`}>
+                <div className={`w-2 h-2 rounded-full mr-2 ${
+                  !appState.aiStatus.isConnected ? 'bg-red-400' :
+                  appState.aiStatus.isProcessing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'
+                }`}></div>
+                {!appState.aiStatus.isConnected ? 'AI Disconnected' :
+                 appState.aiStatus.isProcessing ? 'AI Working...' : 'AI Ready'}
               </span>
 
             </div>
@@ -905,6 +936,7 @@ function App() {
                   documentId={appState.currentDocument?.id}
                   documentVersion={`v${appState.currentDocument?.version_number || 1}.0`}
                   editorRef={editorRef}
+                  onAIStatusChange={handleAIStatusChange}
                 />
               </div>
             </div>
