@@ -5,6 +5,9 @@ import useWebSocket, { ReadyState } from 'react-use-websocket';
 import InlineSuggestionCard from './components/InlineSuggestionCard';
 import ProcessingStages from './components/ProcessingStages';
 import { findTextInDocument, replaceText } from './internal/HighlightExtension';
+import { mergeSuggestions } from './utils/suggestionMerging';
+import { SuggestionManager } from './services/suggestionManager';
+import { calculateWordDiff, optimizeDiff } from './utils/wordLevelDiff';
 
 mermaid.initialize({ startOnLoad: true, theme: 'default' });
 
@@ -154,6 +157,7 @@ export default function ChatPanel({
   const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
   const [currentProcessingStage, setCurrentProcessingStage] = useState<ProcessingStage | null>(null);
   const [allProcessingStages, setAllProcessingStages] = useState<ProcessingStage[]>([]);
+  const [suggestionManager, setSuggestionManager] = useState<SuggestionManager | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -235,6 +239,18 @@ export default function ChatPanel({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Initialize suggestion manager when document content changes
+  useEffect(() => {
+    if (getCurrentDocumentContent) {
+      const currentText = getCurrentDocumentContent();
+      if (currentText && currentText.trim()) {
+        console.log('🎯 Initializing SuggestionManager with document content');
+        const manager = new SuggestionManager(currentText);
+        setSuggestionManager(manager);
+      }
+    }
+  }, [getCurrentDocumentContent, documentId, documentVersion]);
 
   // Load chat history when document or version changes
   useEffect(() => {
@@ -384,16 +400,47 @@ export default function ChatPanel({
               };
               setMessages(prev => [...prev, summaryMessage]);
             } else if (aiMessage.type === 'suggestion_cards' && aiMessage.cards) {
-              // Suggestion cards message
-              const suggestionMessage: ChatMessage = {
-                id: aiMessage.message_id?.toString(),
-                role: "assistant",
-                content: "详细建议：",
-                timestamp: new Date(),
-                type: "suggestion_cards",
-                suggestions: aiMessage.cards
-              };
-              setMessages(prev => [...prev, suggestionMessage]);
+              // Process suggestions with SuggestionManager
+              if (suggestionManager) {
+                console.log(`🔄 Processing ${aiMessage.cards.length} suggestions with SuggestionManager`);
+                
+                // Update suggestion manager with current document content
+                const currentContent = getCurrentDocumentContent?.() || '';
+                suggestionManager.updateCurrentText(currentContent);
+                
+                // Add suggestions to manager (will enhance them with word-level diff)
+                suggestionManager.addSuggestions(aiMessage.cards);
+                
+                // Get enhanced suggestions for display
+                const enhancedSuggestions = suggestionManager.getPendingSuggestions();
+                
+                console.log(`✅ Enhanced ${enhancedSuggestions.length} suggestions with word-level diff`);
+                
+                // Suggestion cards message
+                const suggestionMessage: ChatMessage = {
+                  id: aiMessage.message_id?.toString(),
+                  role: "assistant",
+                  content: "Detailed Suggestions:",
+                  timestamp: new Date(),
+                  type: "suggestion_cards",
+                  suggestions: enhancedSuggestions
+                };
+                setMessages(prev => [...prev, suggestionMessage]);
+              } else {
+                // Fallback to original logic if suggestion manager not available
+                const documentContent = getCurrentDocumentContent?.() || '';
+                const mergedSuggestions = mergeSuggestions(aiMessage.cards, documentContent, 0.7);
+                
+                const suggestionMessage: ChatMessage = {
+                  id: aiMessage.message_id?.toString(),
+                  role: "assistant",
+                  content: "Detailed Suggestions:",
+                  timestamp: new Date(),
+                  type: "suggestion_cards",
+                  suggestions: mergedSuggestions
+                };
+                setMessages(prev => [...prev, suggestionMessage]);
+              }
             }
           });
         }
@@ -609,79 +656,85 @@ export default function ChatPanel({
     }
   };
 
-  // Handle suggestion card actions
+  // Handle suggestion card actions with SuggestionManager
   const handleSuggestionAccept = async (cardId: string) => {
-    console.log('Accepting suggestion:', cardId);
+    console.log('🔄 Accepting suggestion:', cardId);
     
-    // Find the suggestion data
-    const allSuggestions = messages.flatMap(msg => msg.suggestions || []);
-    const suggestion = allSuggestions.find(s => s.id === cardId);
-    
-    if (!suggestion) {
-      console.error('❌ Suggestion not found:', cardId);
-      // Show error message to user
+    if (!suggestionManager || !editorRef?.current) {
+      console.error('❌ SuggestionManager or editor not available');
       const errorMessage: ChatMessage = {
         role: "assistant",
-        content: "Error: Could not find suggestion to accept. Please try again.",
+        content: "Error: System not ready. Please try again.",
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
       return;
     }
 
-    // Replace text in the document using editor
-    if (editorRef?.current && suggestion.original_text && suggestion.replace_to) {
-      console.log('🔄 Replacing text in document...');
-      console.log('Original:', suggestion.original_text.substring(0, 50) + '...');
-      console.log('Replace with:', suggestion.replace_to.substring(0, 50) + '...');
+    try {
+      // Get current document content
+      const currentContent = getCurrentDocumentContent?.() || editorRef.current.getHTML();
       
-      try {
-        const success = replaceText(editorRef.current, suggestion.original_text, suggestion.replace_to);
+      // Apply suggestion using SuggestionManager
+      const result = suggestionManager.applySuggestion(cardId, currentContent);
+      
+      if (result.success && result.newText) {
+        console.log('✅ Suggestion applied successfully via SuggestionManager');
         
-        if (success) {
-          console.log('✅ Text replacement successful');
-          
-          // Clear any existing highlights
-          if (highlightTimeoutRef.current) {
-            clearTimeout(highlightTimeoutRef.current);
-            highlightTimeoutRef.current = null;
-          }
-          editorRef.current.chain().clearTemporaryHighlights().run();
-          setHighlightedCardId(null);
-          
-        } else {
-          console.warn('⚠️ Text replacement failed - text not found');
-          
-          // Try partial replacement as fallback
-          const trimmedOriginal = suggestion.original_text.trim().substring(0, 30);
-          const fallbackSuccess = replaceText(editorRef.current, trimmedOriginal, suggestion.replace_to);
-          
-          if (fallbackSuccess) {
-            console.log('✅ Fallback text replacement successful');
-          } else {
-            console.error('❌ Both exact and fallback text replacement failed');
-            // Still proceed with removing the card since user clicked accept
-          }
+        // Update editor content (this will trigger the editor's onChange)
+        editorRef.current.commands.setContent(result.newText);
+        
+        // Clear any existing highlights and strikethroughs
+        if (highlightTimeoutRef.current) {
+          clearTimeout(highlightTimeoutRef.current);
+          highlightTimeoutRef.current = null;
         }
-      } catch (error) {
-        console.error('❌ Error during text replacement:', error);
-        // Show error message to user
-        const errorMessage: ChatMessage = {
-          role: "assistant",
-          content: "Error: Failed to apply suggestion to document. Please try applying manually.",
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, errorMessage]);
+        editorRef.current.chain().clearTemporaryHighlights().run();
+        editorRef.current.commands.clearAllWordStrikethroughs();
+        setHighlightedCardId(null);
+        
+        console.log(`📊 SuggestionManager stats:`, suggestionManager.getStatistics());
+        
+      } else {
+        console.error('❌ Failed to apply suggestion:', result.error);
+        
+        // Fallback to original text replacement method
+        const allSuggestions = messages.flatMap(msg => msg.suggestions || []);
+        const suggestion = allSuggestions.find(s => s.id === cardId);
+        
+        if (suggestion?.original_text && suggestion?.replace_to) {
+          console.log('🔄 Trying fallback text replacement...');
+          const fallbackSuccess = replaceText(editorRef.current, suggestion.original_text, suggestion.replace_to);
+          
+          if (!fallbackSuccess) {
+            // Show error message to user
+            const errorMessage: ChatMessage = {
+              role: "assistant",
+              content: `Error: ${result.error || 'Could not apply suggestion'}. Please try manually.`,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, errorMessage]);
+            return;
+          }
+        } else {
+          const errorMessage: ChatMessage = {
+            role: "assistant",
+            content: `Error: ${result.error || 'Could not find suggestion data'}. Please try again.`,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          return;
+        }
       }
-    } else {
-      console.error('❌ Missing editor ref or suggestion text data');
-      // Show error message to user
+    } catch (error) {
+      console.error('❌ Error during suggestion acceptance:', error);
       const errorMessage: ChatMessage = {
         role: "assistant",
-        content: "Error: Editor not ready or suggestion data missing. Please try again.",
+        content: "Error: Failed to apply suggestion. Please try again.",
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      return;
     }
     
     // Find the message containing this card for API call
@@ -850,6 +903,106 @@ export default function ChatPanel({
     }
   };
 
+  // Handle card click to show word-level strikethrough in document
+  const handleCardClick = (suggestion: Suggestion) => {
+    console.log('🔗 Card clicked for word-level preview:', suggestion.id);
+    
+    if (!editorRef?.current) {
+      console.error('❌ Editor instance not available');
+      return;
+    }
+
+    try {
+      // Get current document content
+      getCurrentDocumentContent?.() || editorRef.current.getHTML();
+      
+      // Find sentence containing the suggestion text
+      const textLocation = findTextInDocument(editorRef.current.state.doc, suggestion.original_text);
+      
+      if (!textLocation) {
+        console.error('❌ Could not find text in document:', suggestion.original_text);
+        return;
+      }
+
+      // Find sentence boundaries using precise method
+      const docText = editorRef.current.getText();
+      const originalTextStart = textLocation.from;
+      const originalTextEnd = textLocation.to;
+      
+      console.log('🎯 Original text location in document:', originalTextStart, '-', originalTextEnd);
+      
+      // Expand to find sentence boundaries from the original text position
+      let sentenceStart = originalTextStart;
+      let sentenceEnd = originalTextEnd;
+      
+      // Expand backwards to find sentence start (look for . ! ? or document start)
+      while (sentenceStart > 0) {
+        const char = docText[sentenceStart - 1];
+        if (char.match(/[.!?]/)) {
+          break; // Found sentence boundary
+        }
+        sentenceStart--;
+      }
+      
+      // Expand forwards to find sentence end (look for . ! ? or document end)
+      while (sentenceEnd < docText.length) {
+        const char = docText[sentenceEnd];
+        if (char.match(/[.!?]/)) {
+          sentenceEnd++; // Include the punctuation
+          break;
+        }
+        sentenceEnd++;
+      }
+      
+      // Trim whitespace at boundaries
+      while (sentenceStart < docText.length && docText[sentenceStart].match(/\s/)) {
+        sentenceStart++;
+      }
+      while (sentenceEnd > sentenceStart && docText[sentenceEnd - 1].match(/\s/)) {
+        sentenceEnd--;
+      }
+      
+      const targetSentence = docText.substring(sentenceStart, sentenceEnd);
+      const originalTextOffsetInSentence = originalTextStart - sentenceStart;
+      
+      console.log('📝 Found sentence:', targetSentence);
+      console.log('📍 Sentence boundaries:', sentenceStart, '-', sentenceEnd);
+      console.log('📐 Original text offset in sentence:', originalTextOffsetInSentence);
+
+      // Calculate word-level diff directly for reliability
+      console.log('🔍 Calculating word diff directly for:', suggestion.original_text, '→', suggestion.replace_to);
+      const wordDiffResult = optimizeDiff(calculateWordDiff(suggestion.original_text, suggestion.replace_to));
+      
+      console.log('📊 Word diff result:', wordDiffResult);
+      
+      if (!wordDiffResult.hasChanges) {
+        console.warn('⚠️ No word-level changes detected');
+        return;
+      }
+
+      // Show word-level strikethrough using new extension with precise positioning
+      const success = editorRef.current.commands.showWordLevelStrikethrough({
+        suggestionId: suggestion.id,
+        sentenceStart,
+        sentenceEnd,
+        originalTextOffsetInSentence,
+        wordDiffs: wordDiffResult,
+        originalText: suggestion.original_text,
+        severity: suggestion.severity,
+        replacement: suggestion.replace_to,
+      });
+
+      if (success) {
+        console.log(`✅ Word-level strikethrough displayed for suggestion ${suggestion.id}`);
+      } else {
+        console.error('❌ Failed to display word-level strikethrough');
+      }
+
+    } catch (error) {
+      console.error('❌ Error showing word-level strikethrough:', error);
+    }
+  };
+
   // Handle Enter key for sending
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -952,6 +1105,7 @@ export default function ChatPanel({
                         onDismiss={handleSuggestionDismiss}
                         onCopy={handleSuggestionCopy}
                         onHighlight={handleSuggestionHighlight}
+                        onCardClick={handleCardClick}
                         highlightedCardId={highlightedCardId || undefined}
                       />
                     </div>

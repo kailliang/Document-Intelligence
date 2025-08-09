@@ -111,3 +111,236 @@ mark[data-severity="low"] {
 .ProseMirror mark {
   background-color: inherit;
 }
+
+/* Strikethrough decorations with severity colors */
+.strikethrough-decoration {
+  position: relative;
+  animation: strikethrough-appear 0.3s ease-in-out;
+}
+
+.strikethrough-high {
+  color: #dc2626 !important;
+  text-decoration: line-through;
+  text-decoration-color: #dc2626;
+  text-decoration-thickness: 2px;
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.strikethrough-medium {
+  color: #f59e0b !important;
+  text-decoration: line-through;
+  text-decoration-color: #f59e0b;
+  text-decoration-thickness: 2px;
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.strikethrough-low {
+  color: #3b82f6 !important;
+  text-decoration: line-through;
+  text-decoration-color: #3b82f6;
+  text-decoration-thickness: 2px;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Animation for strikethrough appearance */
+@keyframes strikethrough-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Hover effect for strikethrough decorations */
+.strikethrough-decoration:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+}
+
+/* ===== NEW WORD-LEVEL STRIKETHROUGH STYLES ===== */
+
+/* Sentence highlighting - 3 second background highlight */
+.sentence-highlight {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: all 0.3s ease;
+  animation: sentence-highlight-pulse 0.5s ease-in-out;
+}
+
+.sentence-highlight-3s {
+  animation: sentence-highlight-fade 3s ease-in-out forwards;
+}
+
+/* Word-level strikethrough styles */
+.word-strikethrough {
+  position: relative;
+  display: inline;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  animation: word-strikethrough-appear 0.3s ease-in-out;
+}
+
+/* Severity-based word strikethrough colors */
+.word-strikethrough-high.strikethrough-delete {
+  color: #dc2626 !important;
+  text-decoration-color: #dc2626;
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.word-strikethrough-medium.strikethrough-delete {
+  color: #f59e0b !important;
+  text-decoration-color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.word-strikethrough-low.strikethrough-delete {
+  color: #3b82f6 !important;
+  text-decoration-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Replace type (both delete and insert) */
+.word-strikethrough-high.strikethrough-replace {
+  color: #dc2626 !important;
+  text-decoration-color: #dc2626;
+  background-color: rgba(220, 38, 38, 0.15);
+}
+
+.word-strikethrough-medium.strikethrough-replace {
+  color: #f59e0b !important;
+  text-decoration-color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.15);
+}
+
+.word-strikethrough-low.strikethrough-replace {
+  color: #3b82f6 !important;
+  text-decoration-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+/* Insert text styles (shown in green) */
+.word-insert {
+  color: #16a34a !important;
+  background-color: rgba(22, 163, 74, 0.1);
+  font-weight: 600;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+/* Enhanced strikethrough with underline for better visibility */
+.word-strikethrough-enhanced {
+  text-decoration: line-through underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Animations */
+@keyframes sentence-highlight-pulse {
+  0% {
+    background-color: rgba(59, 130, 246, 0.3);
+    transform: scale(1.01);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.2);
+    transform: scale(1.005);
+  }
+  100% {
+    background-color: rgba(59, 130, 246, 0.15);
+    transform: scale(1);
+  }
+}
+
+@keyframes sentence-highlight-fade {
+  0% {
+    background-color: rgba(59, 130, 246, 0.15);
+    opacity: 1;
+  }
+  70% {
+    background-color: rgba(59, 130, 246, 0.1);
+    opacity: 0.8;
+  }
+  100% {
+    background-color: transparent;
+    opacity: 0;
+  }
+}
+
+@keyframes word-strikethrough-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Hover effects for word strikethroughs */
+.word-strikethrough:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  cursor: pointer;
+  transform: scale(1.02);
+  transition: all 0.2s ease;
+}
+
+/* Special styling for merged suggestions */
+.word-strikethrough[data-suggestion-id*="merged"] {
+  border-bottom: 2px dotted;
+}
+
+/* Tooltip-like hover information */
+.word-strikethrough::after {
+  content: attr(data-original-word);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 1000;
+}
+
+.word-strikethrough:hover::after {
+  opacity: 1;
+}
+
+/* Ensure proper stacking and visibility */
+.ProseMirror .sentence-highlight {
+  position: relative;
+  z-index: 1;
+}
+
+.ProseMirror .word-strikethrough {
+  position: relative;
+  z-index: 2;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .word-strikethrough {
+    font-size: 14px;
+  }
+  
+  .sentence-highlight {
+    padding: 1px 2px;
+    margin: -1px -2px;
+  }
+}
