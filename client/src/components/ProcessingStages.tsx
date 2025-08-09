@@ -56,33 +56,32 @@ export default function ProcessingStages({
   }
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${className}`}>
-      {/* Current Stage Display */}
-      <div className="flex items-center space-x-3 mb-4">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getAgentColor(currentStage.agent)}`}>
-          <span className="text-lg">{getAgentIcon(currentStage.agent)}</span>
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-3 ${className}`}>
+      {/* Current Stage Display - Compact */}
+      <div className="flex items-center space-x-3 mb-3">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getAgentColor(currentStage.agent)}`}>
+          <span className="text-sm">{getAgentIcon(currentStage.agent)}</span>
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium text-gray-900">{currentStage.name}</h3>
-            <span className="text-sm text-gray-500">{Math.round(currentStage.progress)}%</span>
+            <h3 className="text-sm font-medium text-gray-900">{currentStage.name}</h3>
+            <span className="text-xs text-gray-500">{Math.round(currentStage.progress)}%</span>
           </div>
-          <p className="text-sm text-gray-600 mt-1">{currentStage.message}</p>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="mb-4">
-        <div className="w-full bg-gray-200 rounded-full h-2">
+      {/* Progress Bar - Thinner */}
+      <div className="mb-3">
+        <div className="w-full bg-gray-200 rounded-full h-1.5">
           <div 
-            className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
+            className="bg-blue-600 h-1.5 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${currentStage.progress}%` }}
           ></div>
         </div>
       </div>
 
-      {/* Stage List */}
-      <div className="space-y-2">
+      {/* Stage List - Compact */}
+      <div className="space-y-1">
         {allStages.map((stage) => {
           let statusIcon;
           let statusColor;
@@ -104,22 +103,20 @@ export default function ProcessingStages({
           return (
             <div 
               key={stage.id}
-              className={`flex items-center space-x-3 p-2 rounded transition-all duration-300 ${
+              className={`flex items-center space-x-2 py-1.5 px-2 rounded transition-all duration-300 ${
                 stage.status === 'active' ? 'bg-blue-50 border border-blue-200' : 
-                stage.status === 'completed' ? 'bg-green-50' : 'bg-gray-50'
+                stage.status === 'completed' ? 'bg-green-50' : ''
               }`}
             >
-              <span className="text-sm">{statusIcon}</span>
-              <span className={`text-sm font-medium ${statusColor}`}>
+              <span className="text-xs">{statusIcon}</span>
+              <span className={`text-xs font-medium ${statusColor} flex-1`}>
                 {stage.name}
               </span>
               {stage.status === 'active' && (
-                <div className="ml-auto">
-                  <div className="flex space-x-1">
-                    <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce"></div>
-                    <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce delay-100"></div>
-                    <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-                  </div>
+                <div className="flex space-x-0.5">
+                  <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce"></div>
+                  <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce delay-100"></div>
+                  <div className="w-1 h-1 bg-blue-600 rounded-full animate-bounce delay-200"></div>
                 </div>
               )}
             </div>
@@ -127,23 +124,20 @@ export default function ProcessingStages({
         })}
       </div>
 
-      {/* AI Agents Working Indicator - Enhanced */}
-      <div className="mt-4 pt-3 border-t border-gray-100">
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-3 border border-blue-200">
-          <div className="flex items-center justify-center space-x-4">
+      {/* AI Agents Working Indicator - Compact */}
+      <div className="mt-3 pt-2 border-t border-gray-100">
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-md p-2 border border-blue-200">
+          <div className="flex items-center justify-center space-x-3">
             <div className="flex space-x-1">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce delay-100"></div>
-              <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce delay-200"></div>
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce"></div>
+              <div className="w-1 h-1 bg-green-500 rounded-full animate-bounce delay-100"></div>
+              <div className="w-1 h-1 bg-purple-500 rounded-full animate-bounce delay-200"></div>
             </div>
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-semibold text-blue-700">🤖 AI Agents Working</span>
-              <span className="text-xs text-blue-600 mt-0.5">Processing your request...</span>
-            </div>
+            <span className="text-xs font-semibold text-blue-700">🤖 AI Agents Working</span>
             <div className="flex space-x-1">
-              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce delay-300"></div>
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-bounce delay-400"></div>
-              <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce delay-500"></div>
+              <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce delay-300"></div>
+              <div className="w-1 h-1 bg-green-500 rounded-full animate-bounce delay-400"></div>
+              <div className="w-1 h-1 bg-purple-500 rounded-full animate-bounce delay-500"></div>
             </div>
           </div>
         </div>

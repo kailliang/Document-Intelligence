@@ -65,6 +65,7 @@ interface ChatPanelProps {
   documentId?: number;
   documentVersion?: string;
   editorRef?: React.MutableRefObject<any>;
+  onAIStatusChange?: (isConnected: boolean, isProcessing: boolean, statusMessage: string) => void;
 }
 
 // Mermaid diagram component
@@ -148,12 +149,12 @@ export default function ChatPanel({
   onInsertMermaid,
   documentId,
   documentVersion = "v1.0",
-  editorRef
+  editorRef,
+  onAIStatusChange
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
   const [currentProcessingStage, setCurrentProcessingStage] = useState<ProcessingStage | null>(null);
   const [allProcessingStages, setAllProcessingStages] = useState<ProcessingStage[]>([]);
   const [suggestionManager, setSuggestionManager] = useState<SuggestionManager | null>(null);
@@ -206,16 +207,19 @@ export default function ChatPanel({
       console.log('WebSocket connected successfully');
       setConnectionError(null);
       setReconnectAttempts(0);
+      onAIStatusChange?.(true, false, 'AI Ready');
     },
     onClose: (event) => {
       console.log('WebSocket closed:', event.code, event.reason);
       if (event.code !== 1000) { // 1000 is normal closure
         setConnectionError('Connection lost. Attempting to reconnect...');
+        onAIStatusChange?.(false, false, 'Disconnected');
       }
     },
     onError: (error) => {
       console.error('WebSocket error:', error);
       setConnectionError('Connection error occurred');
+      onAIStatusChange?.(false, false, 'Connection Error');
     },
     retryOnError: true,
     filter: (message) => {
@@ -336,6 +340,7 @@ export default function ChatPanel({
         
       case 'processing_start':
         setIsLoading(true);
+        onAIStatusChange?.(true, true, 'Processing...');
         // Initialize processing stages
         setAllProcessingStages(defaultStages);
         setCurrentProcessingStage(null);
@@ -370,6 +375,7 @@ export default function ChatPanel({
         
       case 'assistant_response':
         setIsLoading(false);
+        onAIStatusChange?.(true, false, 'AI Ready');
         // Clear processing stages when response is complete
         setCurrentProcessingStage(null);
         setAllProcessingStages([]);
@@ -511,6 +517,7 @@ export default function ChatPanel({
     const messageToSend = inputMessage;
     setInputMessage("");
     setIsLoading(true);
+    onAIStatusChange?.(true, true, 'Processing...');
 
     try {
       // Get current document content
@@ -654,9 +661,6 @@ export default function ChatPanel({
           }
         }
         
-        // Set highlighted card ID for UI feedback
-        setHighlightedCardId(suggestion.id);
-        
         // Clear highlight after 3 seconds
         if (highlightTimeoutRef.current) {
           clearTimeout(highlightTimeoutRef.current);
@@ -666,7 +670,6 @@ export default function ChatPanel({
           if (editorRef.current) {
             editorRef.current.commands.clearTemporaryHighlights();
           }
-          setHighlightedCardId(null);
           highlightTimeoutRef.current = null;
         }, 3000);
       } else {
@@ -980,13 +983,59 @@ export default function ChatPanel({
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-3">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 py-8">
-            <p className="text-sm">Start a conversation with the AI Assistant</p>
-            <div className="mt-4 space-y-2 text-xs text-gray-400">
-              <p>Try asking:</p>
-              <p className="italic">"Please analyze this document for issues"</p>
-              <p className="italic">"How can I improve the patent claims?"</p>
-              <p className="italic">"Generate a process flowchart"</p>
+          <div className="flex items-center justify-center py-8">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-xs text-center shadow-sm">
+              <div className="flex items-center justify-center mb-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-lg">🤖</span>
+                </div>
+                <h3 className="text-sm font-medium text-blue-800 ml-2">AI Assistant</h3>
+              </div>
+              
+              {documentId ? (
+                // When document is selected - show interactive buttons
+                <>
+                  <p className="text-xs text-blue-700 mb-3">Start a conversation with the AI Assistant</p>
+                  
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-blue-600 mb-2">Try asking:</p>
+                    <div className="space-y-1.5">
+                      <button 
+                        onClick={() => setInputMessage("Please analyze this document for issues")}
+                        className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
+                      >
+                        Please analyze this document for issues
+                      </button>
+                      <button 
+                        onClick={() => setInputMessage("How can I improve the patent claims?")}
+                        className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
+                      >
+                        How can I improve the patent claims?
+                      </button>
+                      <button 
+                        onClick={() => setInputMessage("Generate a process flowchart")}
+                        className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
+                      >
+                        Generate a process flowchart
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                // When no document is selected - show static text only
+                <>
+                  <p className="text-xs text-blue-700 mb-3">Start a conversation with the AI Assistant by selecting a document.</p>
+                  
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-blue-600 mb-2">Try asking:</p>
+                    <div className="space-y-1 text-xs text-blue-600">
+                      <p className="italic">Please analyze this document for issues</p>
+                      <p className="italic">How can I improve the patent claims?</p>
+                      <p className="italic">Generate a process flowchart</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : (
@@ -1026,7 +1075,6 @@ export default function ChatPanel({
                         onDismiss={handleSuggestionDismiss}
                         onCopy={handleSuggestionCopy}
                         onHighlight={handleSuggestionHighlight}
-                        highlightedCardId={highlightedCardId}
                       />
                     </div>
                   ) : (

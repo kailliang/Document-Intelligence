@@ -26,7 +26,6 @@ interface InlineSuggestionCardProps {
   onDismiss: (cardId: string) => void;
   onCopy: (cardId: string) => void;
   onHighlight?: (suggestion: Suggestion) => void;
-  highlightedCardId?: string | null;
   className?: string;
 }
 
@@ -36,7 +35,6 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   onDismiss,
   onCopy,
   onHighlight,
-  highlightedCardId,
   className = ''
 }) => {
   if (!suggestions || suggestions.length === 0) {
@@ -141,11 +139,6 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
               {suggestion.mergedIds && suggestion.mergedIds.length > 1 && (
                 <span className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded-full font-medium shrink-0">
                   Merged ({suggestion.mergedIds.length})
-                </span>
-              )}
-              {highlightedCardId === suggestion.id && (
-                <span className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-medium animate-pulse shrink-0">
-                  Highlighted
                 </span>
               )}
             <span className="text-xs font-medium text-gray-600 shrink-0">
