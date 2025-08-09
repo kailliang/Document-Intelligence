@@ -62,7 +62,12 @@ export default function Editor({ handleEditorChange, content, onEditorReady }: E
       const currentContent = editor.getHTML();
       // Only sync when content is truly different and not from internal editor updates
       if (content.trim() !== currentContent.trim()) {
-        editor.commands.setContent(content, false); // false = don't trigger update event
+        // Use setTimeout to avoid flushSync warning during render cycle
+        setTimeout(() => {
+          if (editor) {
+            editor.commands.setContent(content, false); // false = don't trigger update event
+          }
+        }, 0);
       }
     }
   }, [content, editor]);

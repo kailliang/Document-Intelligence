@@ -245,21 +245,29 @@ export default function ChatPanel({
 
   // Initialize suggestion manager when document content changes
   useEffect(() => {
-    if (getCurrentDocumentContent) {
+    if (getCurrentDocumentContent && documentId) {
       const currentText = getCurrentDocumentContent();
       if (currentText && currentText.trim()) {
         console.log('🎯 Initializing SuggestionManager with document content');
         const manager = new SuggestionManager(currentText);
         setSuggestionManager(manager);
+      } else {
+        setSuggestionManager(null);
       }
+    } else {
+      setSuggestionManager(null);
     }
-  }, [getCurrentDocumentContent, documentId, documentVersion]);
+  }, [documentId, documentVersion]); // Remove getCurrentDocumentContent from dependencies
 
   // Load chat history when document or version changes
   useEffect(() => {
-    const loadChatHistory = async () => {
-      if (!documentId || !documentVersion) return;
+    if (!documentId || !documentVersion) {
+      setMessages([]);
+      return;
+    }
 
+    // Debounce to prevent multiple calls during rapid state changes
+    const timeoutId = setTimeout(async () => {
       try {
         console.log(`Loading chat history for document ${documentId}, version ${documentVersion}`);
         
@@ -312,9 +320,9 @@ export default function ChatPanel({
         // Start with empty messages on error
         setMessages([]);
       }
-    };
+    }, 100); // 100ms debounce
 
-    loadChatHistory();
+    return () => clearTimeout(timeoutId);
   }, [documentId, documentVersion]);
 
   // Cleanup highlight timeout on unmount
