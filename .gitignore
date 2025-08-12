@@ -61,3 +61,5 @@ build/
 # Temporary files
 *.tmp
 *.temp
+# Mac
+*.DS_Store
