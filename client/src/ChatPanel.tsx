@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import mermaid from "mermaid";
 import useWebSocket, { ReadyState } from 'react-use-websocket';
@@ -10,66 +10,8 @@ import { SuggestionManager } from './services/suggestionManager';
 
 mermaid.initialize({ startOnLoad: true, theme: 'default' });
 
-interface ChatMessage {
-  id?: string; // Database message ID for API calls
-  role: "user" | "assistant";
-  content: string;
-  timestamp?: Date;
-  type?: "text" | "suggestion_cards" | "suggestion_summary";
-  suggestions?: Suggestion[];
-  summary?: SuggestionSummary;
-}
-
-interface SuggestionSummary {
-  total_count: number;
-  severity_counts: {high: number, medium: number, low: number};
-  type_counts: Record<string, number>;
-  accepted_count: number;
-  dismissed_count: number;
-}
-
-interface ProcessingStage {
-  id: string;
-  name: string;
-  message: string;
-  progress: number;
-  status: 'pending' | 'active' | 'completed' | 'error';
-  agent: string;
-}
-
-interface Suggestion {
-  id: string;
-  type: string;
-  severity: 'high' | 'medium' | 'low';
-  paragraph: number;
-  description: string;
-  original_text: string;
-  replace_to: string;
-  confidence: number;
-  agent: 'technical' | 'legal' | 'novelty' | 'lead';
-  created_at: string;
-}
-
-interface DiagramInsertion {
-  insert_after_text: string;
-  mermaid_syntax: string;
-  diagram_type: string;
-  title?: string;
-}
-
-interface ChatPanelProps {
-  className?: string;
-  getCurrentDocumentContent?: () => string;
-  onDiagramInsertions?: (insertions: DiagramInsertion[]) => void;
-  onInsertMermaid?: (mermaidSyntax: string, title?: string) => void;
-  documentId?: number;
-  documentVersion?: string;
-  editorRef?: React.MutableRefObject<any>;
-  onAIStatusChange?: (isConnected: boolean, isProcessing: boolean, statusMessage: string) => void;
-}
-
-// Mermaid diagram component
-function MermaidDiagram({ chart, onInsert }: { chart: string; onInsert?: (mermaidSyntax: string, title?: string) => void }) {
+// Mermaid diagram component - moved outside ChatPanel to prevent re-creation
+const MermaidDiagram = React.memo(({ chart, onInsert }: { chart: string; onInsert?: (mermaidSyntax: string, title?: string) => void }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [isRendered, setIsRendered] = useState(false);
 
@@ -141,6 +83,64 @@ function MermaidDiagram({ chart, onInsert }: { chart: string; onInsert?: (mermai
       )}
     </div>
   );
+});
+
+interface ChatMessage {
+  id?: string; // Database message ID for API calls
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: Date;
+  type?: "text" | "suggestion_cards" | "suggestion_summary";
+  suggestions?: Suggestion[];
+  summary?: SuggestionSummary;
+}
+
+interface SuggestionSummary {
+  total_count: number;
+  severity_counts: {high: number, medium: number, low: number};
+  type_counts: Record<string, number>;
+  accepted_count: number;
+  dismissed_count: number;
+}
+
+interface ProcessingStage {
+  id: string;
+  name: string;
+  message: string;
+  progress: number;
+  status: 'pending' | 'active' | 'completed' | 'error';
+  agent: string;
+}
+
+interface Suggestion {
+  id: string;
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  paragraph: number;
+  description: string;
+  original_text: string;
+  replace_to: string;
+  confidence: number;
+  agent: 'technical' | 'legal' | 'novelty' | 'lead';
+  created_at: string;
+}
+
+interface DiagramInsertion {
+  insert_after_text: string;
+  mermaid_syntax: string;
+  diagram_type: string;
+  title?: string;
+}
+
+interface ChatPanelProps {
+  className?: string;
+  getCurrentDocumentContent?: () => string;
+  onDiagramInsertions?: (insertions: DiagramInsertion[]) => void;
+  onInsertMermaid?: (mermaidSyntax: string, title?: string) => void;
+  documentId?: number;
+  documentVersion?: string;
+  editorRef?: React.MutableRefObject<any>;
+  onAIStatusChange?: (isConnected: boolean, isProcessing: boolean, statusMessage: string) => void;
 }
 
 export default function ChatPanel({ 
@@ -1029,7 +1029,34 @@ export default function ChatPanel({
     adjustTextareaHeight();
   }, [inputMessage]);
 
+  // Memoize onInsertMermaid to prevent MermaidDiagram re-renders
+  const memoizedOnInsertMermaid = useCallback((mermaidSyntax: string, title?: string) => {
+    if (onInsertMermaid) {
+      onInsertMermaid(mermaidSyntax, title);
+    }
+  }, [onInsertMermaid]);
 
+  // Memoize ReactMarkdown components to prevent re-creation on every render
+  const markdownComponents = useMemo(() => ({
+    code({ className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const isMermaid = match && match[1] === 'mermaid';
+      const isInline = (props as any)?.inline;
+
+      if (!isInline && isMermaid) {
+        return <MermaidDiagram chart={String(children).replace(/\n$/, '')} onInsert={memoizedOnInsertMermaid} />;
+      }
+
+      return (
+        <code
+          className={`${!isInline ? 'block bg-gray-800 text-gray-100 p-3 rounded my-2 overflow-x-auto' : 'bg-gray-200 px-1 rounded'}`}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    }
+  }), [memoizedOnInsertMermaid]);
 
   // Get connection status display
   const getConnectionStatus = () => {
@@ -1184,26 +1211,7 @@ export default function ChatPanel({
                     <div className="bg-gray-100 text-gray-800 rounded-lg px-4 py-2">
                       <div className="text-sm">
                         <ReactMarkdown
-                          components={{
-                            code({ className, children, ...props }: any) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              const isMermaid = match && match[1] === 'mermaid';
-                              const isInline = (props as any)?.inline;
-
-                              if (!isInline && isMermaid) {
-                                return <MermaidDiagram chart={String(children).replace(/\n$/, '')} onInsert={onInsertMermaid} />;
-                              }
-
-                              return (
-                                <code
-                                  className={`${!isInline ? 'block bg-gray-800 text-gray-100 p-3 rounded my-2 overflow-x-auto' : 'bg-gray-200 px-1 rounded'}`}
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
+                          components={markdownComponents}
                         >
                           {msg.content}
                         </ReactMarkdown>
