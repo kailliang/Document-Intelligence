@@ -154,25 +154,43 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentProcessingStage, setCurrentProcessingStage] = useState<ProcessingStage | null>(null);
   const [allProcessingStages, setAllProcessingStages] = useState<ProcessingStage[]>([]);
   const [suggestionManager, setSuggestionManager] = useState<SuggestionManager | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false); // Track chat history loading
   const [hasInitialized, setHasInitialized] = useState(false); // Track if component has initialized
+  const [detectedIntent, setDetectedIntent] = useState<string>("document_analysis"); // Track detected intent
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
-  // Predefined processing stages configuration
-  const defaultStages: ProcessingStage[] = [
-    { id: "intent_detection", name: "Intent Detection", message: "Analyzing your request...", progress: 10, status: 'pending', agent: "system" },
-    { id: "agent_selection", name: "Agent Selection", message: "Selecting appropriate AI agents...", progress: 20, status: 'pending', agent: "system" },
-    { id: "document_parsing", name: "Document Parsing", message: "Processing document content...", progress: 30, status: 'pending', agent: "technical" },
-    { id: "legal_analysis", name: "Legal Analysis", message: "Legal agent investigating compliance...", progress: 50, status: 'pending', agent: "legal" },
-    { id: "technical_analysis", name: "Technical Analysis", message: "Technical agent reviewing structure...", progress: 70, status: 'pending', agent: "technical" },
-    { id: "generating_suggestions", name: "Generating Suggestions", message: "Preparing improvement suggestions...", progress: 85, status: 'pending', agent: "ai_enhanced" },
-    { id: "finalizing_results", name: "Finalizing Results", message: "Finalizing analysis results...", progress: 95, status: 'pending', agent: "system" }
-  ];
+  // Predefined processing stages configuration based on intent
+  // Note: These IDs must match what the backend actually sends
+  const stageConfigurations: Record<string, ProcessingStage[]> = {
+    document_analysis: [
+      { id: "intent_detection", name: "Intent Detection", message: "Analyzing your request...", progress: 10, status: 'pending' as const, agent: "system" },
+      { id: "agent_selection", name: "Agent Selection", message: "Selecting appropriate AI agents...", progress: 20, status: 'pending' as const, agent: "system" },
+      { id: "document_parsing", name: "Document Parsing", message: "Processing document content...", progress: 30, status: 'pending' as const, agent: "technical" },
+      { id: "legal_analysis", name: "Legal Analysis", message: "Legal agent investigating compliance...", progress: 50, status: 'pending' as const, agent: "legal" },
+      { id: "technical_analysis", name: "Technical Analysis", message: "Technical agent reviewing structure...", progress: 70, status: 'pending' as const, agent: "technical" },
+      { id: "generating_suggestions", name: "Generating Suggestions", message: "Preparing improvement suggestions...", progress: 85, status: 'pending' as const, agent: "ai_enhanced" },
+      { id: "finalizing_results", name: "Finalizing Results", message: "Finalizing analysis results...", progress: 95, status: 'pending' as const, agent: "system" }
+    ],
+    casual_chat: [
+      { id: "intent_detection", name: "Understanding Request", message: "Processing your message...", progress: 25, status: 'pending' as const, agent: "system" },
+      { id: "agent_selection", name: "Preparing Response", message: "Setting up AI assistant...", progress: 50, status: 'pending' as const, agent: "system" },
+      { id: "finalizing_results", name: "Generating Response", message: "Creating response...", progress: 90, status: 'pending' as const, agent: "ai_enhanced" }
+    ],
+    mermaid_diagram: [
+      { id: "intent_detection", name: "Request Analysis", message: "Understanding diagram requirements...", progress: 25, status: 'pending' as const, agent: "system" },
+      { id: "agent_selection", name: "Diagram Setup", message: "Preparing diagram generator...", progress: 50, status: 'pending' as const, agent: "system" },
+      { id: "finalizing_results", name: "Creating Diagram", message: "Generating Mermaid diagram...", progress: 90, status: 'pending' as const, agent: "ai_enhanced" }
+    ]
+  };
+  
+  // Default stages for fallback
+  const defaultStages = stageConfigurations.document_analysis;
 
   // WebSocket connection to unified chat endpoint
   const socketUrl = `ws://localhost:8000/ws/chat`;
@@ -359,17 +377,18 @@ export default function ChatPanel({
         break;
         
       case 'processing_start':
+        // Note: Backend doesn't actually send this message type in unified chat
         setIsLoading(true);
         onAIStatusChange?.(true, true, 'Processing...');
-        // Initialize processing stages
-        setAllProcessingStages(defaultStages);
-        setCurrentProcessingStage(null);
         break;
 
       case 'processing_stage':
         // Handle individual processing stage updates
         const stageData = message;
-        const updatedStages = allProcessingStages.length > 0 ? allProcessingStages : defaultStages;
+        
+        // Use current stages (should be initialized in sendMessage)
+        const currentStageConfig = stageConfigurations[detectedIntent] || defaultStages;
+        const updatedStages = allProcessingStages.length > 0 ? allProcessingStages : currentStageConfig;
         
         // Update stages with current stage status
         const newStages = updatedStages.map(stage => {
@@ -382,7 +401,7 @@ export default function ChatPanel({
               status: 'active' as const,
               agent: stageData.agent || stage.agent
             };
-          } else if (defaultStages.findIndex(s => s.id === stage.id) < defaultStages.findIndex(s => s.id === stageData.stage)) {
+          } else if (currentStageConfig.findIndex(s => s.id === stage.id) < currentStageConfig.findIndex(s => s.id === stageData.stage)) {
             // Mark earlier stages as completed
             return { ...stage, status: 'completed' as const };
           }
@@ -399,6 +418,12 @@ export default function ChatPanel({
         // Clear processing stages when response is complete
         setCurrentProcessingStage(null);
         setAllProcessingStages([]);
+        
+        // Check if intent was detected in the response
+        if (message.intent_detected) {
+          setDetectedIntent(message.intent_detected);
+          console.log(`Intent detected: ${message.intent_detected}`);
+        }
         
         // Process AI response messages
         if (message.messages && Array.isArray(message.messages)) {
@@ -535,6 +560,38 @@ export default function ChatPanel({
     // Add user message immediately
     setMessages(prev => [...prev, userMessage]);
     const messageToSend = inputMessage;
+    
+    // Determine intent based on keywords (same as backend logic)
+    const userLower = messageToSend.toLowerCase();
+    let predictedIntent = "casual_chat";
+    
+    // Check for diagram keywords
+    if (userLower.includes("diagram") || userLower.includes("flowchart") || 
+        userLower.includes("chart") || userLower.includes("visual") || 
+        userLower.includes("draw") || userLower.includes("mermaid")) {
+      predictedIntent = "mermaid_diagram";
+    }
+    // Check for document analysis keywords
+    else if (userLower.includes("analyze") || userLower.includes("review") || 
+              userLower.includes("check") || userLower.includes("improve") || 
+              userLower.includes("suggest") || userLower.includes("issue") ||
+              userLower.includes("problem") || userLower.includes("fix")) {
+      // Check if we have document content to analyze
+      const hasDocumentContent = getCurrentDocumentContent && getCurrentDocumentContent().trim().length > 0;
+      if (hasDocumentContent) {
+        predictedIntent = "document_analysis";
+      } else {
+        // If no document content, treat as casual chat
+        predictedIntent = "casual_chat";
+      }
+    }
+    
+    // Set predicted intent and initialize stages
+    setDetectedIntent(predictedIntent);
+    const stagesToUse = stageConfigurations[predictedIntent] || defaultStages;
+    setAllProcessingStages(stagesToUse);
+    setCurrentProcessingStage(null);
+    
     setInputMessage("");
     setIsLoading(true);
     onAIStatusChange?.(true, true, 'Processing...');
@@ -955,6 +1012,23 @@ export default function ChatPanel({
     }
   };
 
+  // Auto-resize textarea based on content
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // Reset height to calculate the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Set height based on scrollHeight, with min and max constraints
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 36), 192); // min: 36px (single line), max: 192px (about 8 lines)
+      textarea.style.height = `${newHeight}px`;
+    }
+  };
+
+  // Adjust height when input message changes
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputMessage]);
+
 
 
   // Get connection status display
@@ -1174,10 +1248,10 @@ export default function ChatPanel({
       </div>
 
       {/* Floating input area */}
-      <div className="absolute bottom-4 left-4 right-4">
-        <div className="bg-white rounded-full shadow-lg border-t border-gray-100 px-2 py-3 flex items-center gap-3">
-          <input
-            type="text"
+      <div className="absolute bottom-4 left-2 right-2">
+        <div className="bg-white rounded-2xl shadow-lg border-t border-gray-100 px-2 py-2 flex items-end gap-1">
+          <textarea
+            ref={textareaRef}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -1187,7 +1261,7 @@ export default function ChatPanel({
               readyState === ReadyState.CONNECTING ? "Connecting..." :
               "Not connected"
             }
-            className="flex-1 text-sm placeholder-gray-400 bg-transparent focus:outline-none border-none focus:ring-0 focus:border-transparent"
+            className="flex-1 text-sm placeholder-gray-400 bg-transparent focus:outline-none border-none focus:ring-0 focus:border-transparent resize-none overflow-y-auto"
             style={{ 
               border: 'none', 
               outline: 'none', 
@@ -1195,14 +1269,18 @@ export default function ChatPanel({
               background: 'transparent',
               WebkitAppearance: 'none',
               MozAppearance: 'none',
-              appearance: 'none'
+              appearance: 'none',
+              minHeight: '36px',
+              maxHeight: '192px',
+              lineHeight: '1.5'
             }}
+            rows={1}
             disabled={isLoading || (readyState !== ReadyState.OPEN && readyState !== ReadyState.CONNECTING)}
           />
           <button
             onClick={sendMessage}
             disabled={!inputMessage.trim() || isLoading || readyState !== ReadyState.OPEN}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
               !inputMessage.trim() || isLoading || readyState !== ReadyState.OPEN
                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 : 'bg-red-500 text-white hover:bg-red-600'
