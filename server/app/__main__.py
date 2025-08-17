@@ -325,10 +325,11 @@ def create_version(
     
     Logic for creating new version:
     1. Find document
-    2. Calculate new version number (max version number + 1)
-    3. Set all existing versions to inactive
-    4. Create new version and set as active
-    5. Update document's current version pointer
+    2. Calculate new version number (max version number + 1)  
+    3. If no content provided, copy content from current active version
+    4. Set all existing versions to inactive
+    5. Create new version and set as active
+    6. Update document's current version pointer
     """
     # Find the document
     document = db.scalar(
@@ -348,6 +349,17 @@ def create_version(
     
     new_version_number = max_version + 1
     
+    # Get current active version content for copying
+    current_version_content = ""
+    if not request.content:  # If no content provided, copy from current active version
+        current_active_version = db.scalar(
+            select(models.DocumentVersion)
+            .where(models.DocumentVersion.document_id == document_id)
+            .where(models.DocumentVersion.is_active == True)
+        )
+        if current_active_version:
+            current_version_content = current_active_version.content
+    
     # Set all existing versions to inactive
     db.execute(
         update(models.DocumentVersion)
@@ -355,11 +367,11 @@ def create_version(
         .values(is_active=False)
     )
     
-    # Create new version (empty document)
+    # Create new version (copy from current active version if no content provided)
     new_version = models.DocumentVersion(
         document_id=document_id,
         version_number=new_version_number,
-        content="",  # New version starts from empty document
+        content=request.content if request.content else current_version_content,
         is_active=True,
         created_at=datetime.utcnow()
     )

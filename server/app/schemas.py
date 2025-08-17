@@ -88,7 +88,7 @@ class DocumentWithCurrentVersion(BaseModel):
 
 
 class CreateVersionRequest(BaseModel):
-    """Request schema for creating new version - content is now optional, new version defaults to empty"""
+    """Request schema for creating new version - if content is not provided, new version will copy from current active version"""
     content: Optional[str] = ""
 
 
