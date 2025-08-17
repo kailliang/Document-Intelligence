@@ -217,14 +217,14 @@ function App() {
   };
 
   /**
-   * Create a new version of the document
+   * Create a new version of the document (copies content from current active version)
    */
   const createNewVersion = async () => {
     if (!appState.currentDocument) return;
 
     setAppState(prev => ({ ...prev, isLoading: true }));
     try {
-      // Create new version (empty document)
+      // Create new version (copies from current active version)
       await axios.post(`${BACKEND_URL}/api/documents/${appState.currentDocument.id}/versions`, {});
 
       // Reload document and version history
