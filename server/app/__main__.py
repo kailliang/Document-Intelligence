@@ -579,7 +579,7 @@ def delete_version(
 
 # Try to import enhanced endpoints (if available)
 try:
-    from app.enhanced_endpoints_simple import (
+    from app.endpoints import (
         websocket_enhanced_endpoint, 
         chat_with_ai, 
         ChatRequest,
