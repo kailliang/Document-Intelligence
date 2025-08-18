@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 import logging
 
+from app.internal.ai_base import AIProvider
 from app.internal.prompt_enhanced import ENHANCED_PROMPT, FUNCTION_TOOLS
 from app.internal.patent_chat_prompt import format_patent_chat_prompt
 from app.internal.text_utils import html_to_plain_text
@@ -18,22 +19,61 @@ logger = logging.getLogger(__name__)
 load_dotenv(override=True)  # Force override of environment variables
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4o"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4.1"
 
 
 def get_ai_enhanced(
-    model: str | None = OPENAI_MODEL,
-    api_key: str | None = OPENAI_API_KEY,
-) -> AIEnhanced:
-    if not api_key or not model:
-        raise ValueError("Both API key and model need to be set")
-    return AIEnhanced(api_key, model)
+    model: str | None = None,
+    api_key: str | None = None,
+) -> AIProvider:
+    """Factory function to get the appropriate AI provider based on model name"""
+    
+    # Determine model if not provided
+    if not model:
+        # Check for AI_MODEL first, then OPENAI_MODEL, then default to Gemini
+        model = os.getenv("AI_MODEL") or os.getenv("OPENAI_MODEL") or "gemini-2.5-flash"
+    
+    logger.info(f"Selecting AI provider for model: {model}")
+    
+    # Auto-detect provider based on model name
+    if model.startswith("gpt-"):
+        # Use OpenAI provider
+        if not api_key:
+            api_key = OPENAI_API_KEY
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not set for OpenAI model")
+        logger.info(f"Using OpenAI provider with model: {model}")
+        return OpenAIProvider(api_key, model)
+    
+    elif model.startswith("gemini-"):
+        # Use Gemini provider
+        if not api_key:
+            api_key = GEMINI_API_KEY
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY not set for Gemini model")
+        logger.info(f"Using Gemini provider with model: {model}")
+        from app.internal.ai_gemini import GeminiProvider
+        return GeminiProvider(api_key, model)
+    
+    else:
+        # Default to Gemini for unknown model names
+        if not api_key:
+            api_key = GEMINI_API_KEY
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY not set")
+        logger.info(f"Defaulting to Gemini provider with model: gemini-2.5-flash")
+        from app.internal.ai_gemini import GeminiProvider
+        return GeminiProvider(api_key, "gemini-2.5-flash")
 
 
-class AIEnhanced:
+class OpenAIProvider(AIProvider):
+    """OpenAI implementation of the AI provider"""
+    
     def __init__(self, api_key: str, model: str):
-        self.model = model
+        super().__init__(api_key, model)
         self._client = AsyncOpenAI(api_key=api_key)
+        logger.info(f"Initialized OpenAI provider with model: {model}")
 
     async def review_document_with_functions(self, document: str) -> AsyncGenerator[str | None, None]:
         """
@@ -413,3 +453,6 @@ class AIEnhanced:
                 except json.JSONDecodeError as e:
                     logger.error(f"Diagram insertion parameter parsing failed: {e}")
                     continue
+
+# Backward compatibility alias for old AIEnhanced class
+AIEnhanced = OpenAIProvider
