@@ -974,6 +974,48 @@ export default function ChatPanel({
     }
   };
 
+  // Handle accepting all suggestions in a message
+  const handleAcceptAll = async (suggestions: Suggestion[]) => {
+    console.log('🔄 Accepting all suggestions:', suggestions.map(s => s.id));
+    
+    if (!suggestions || suggestions.length === 0) return;
+    
+    // Process each suggestion sequentially
+    for (const suggestion of suggestions) {
+      try {
+        await handleSuggestionAccept(suggestion.id);
+        // Small delay to ensure proper processing
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Failed to accept suggestion ${suggestion.id}:`, error);
+        // Continue with other suggestions even if one fails
+      }
+    }
+    
+    console.log('✅ All suggestions processed');
+  };
+
+  // Handle rejecting all suggestions in a message  
+  const handleRejectAll = async (suggestions: Suggestion[]) => {
+    console.log('🔄 Rejecting all suggestions:', suggestions.map(s => s.id));
+    
+    if (!suggestions || suggestions.length === 0) return;
+    
+    // Process each suggestion sequentially
+    for (const suggestion of suggestions) {
+      try {
+        await handleSuggestionDismiss(suggestion.id);
+        // Small delay to ensure proper processing
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Failed to dismiss suggestion ${suggestion.id}:`, error);
+        // Continue with other suggestions even if one fails
+      }
+    }
+    
+    console.log('✅ All suggestions processed');
+  };
+
   const handleSuggestionCopy = async (cardId: string) => {
     console.log('Copying suggestion:', cardId);
     const allSuggestions = messages.flatMap(msg => msg.suggestions || []);
@@ -1204,6 +1246,8 @@ export default function ChatPanel({
                         onDismiss={handleSuggestionDismiss}
                         onCopy={handleSuggestionCopy}
                         onHighlight={handleSuggestionHighlight}
+                        onAcceptAll={() => handleAcceptAll(msg.suggestions || [])}
+                        onRejectAll={() => handleRejectAll(msg.suggestions || [])}
                       />
                     </div>
                   ) : (

@@ -26,6 +26,8 @@ interface InlineSuggestionCardProps {
   onDismiss: (cardId: string) => void;
   onCopy: (cardId: string) => void;
   onHighlight?: (suggestion: Suggestion) => void;
+  onAcceptAll?: () => void;
+  onRejectAll?: () => void;
   className?: string;
 }
 
@@ -35,6 +37,8 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
   onDismiss,
   onCopy,
   onHighlight,
+  onAcceptAll,
+  onRejectAll,
   className = ''
 }) => {
   if (!suggestions || suggestions.length === 0) {
@@ -203,7 +207,7 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
           <div className="flex gap-1 pt-2">
             <button
               onClick={() => onAccept(suggestion.id)}
-              className="flex-1 px-2 py-1 text-[9px] font-medium text-white bg-green-600 hover:bg-green-700 rounded-sm transition-colors"
+              className="flex-1 px-2 py-1 text-[9px] font-medium text-green-800 bg-green-200 hover:bg-green-300 rounded-sm transition-colors"
               title="Accept suggestion and apply to document"
             >
               ✅ Accept
@@ -217,7 +221,7 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
             </button>
             <button
               onClick={() => onDismiss(suggestion.id)}
-              className="flex-1 px-2 py-1 text-[9px] font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-sm transition-colors"
+              className="flex-1 px-2 py-1 text-[9px] font-medium text-red-800 bg-red-200 hover:bg-red-300 rounded-sm transition-colors"
               title="Dismiss this suggestion"
             >
               ❌ Dismiss
@@ -225,6 +229,32 @@ const InlineSuggestionCard: React.FC<InlineSuggestionCardProps> = ({
           </div>
         </div>
       ))}
+      
+      {/* Bulk action buttons - only show if we have multiple suggestions and handlers are provided */}
+      {suggestions.length > 1 && (onAcceptAll || onRejectAll) && (
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <div className="flex gap-2 px-3">
+            {onAcceptAll && (
+              <button
+                onClick={onAcceptAll}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors shadow-sm"
+                title="Accept all suggestions and apply to document"
+              >
+                ✅ Accept All
+              </button>
+            )}
+            {onRejectAll && (
+              <button
+                onClick={onRejectAll}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors shadow-sm"
+                title="Reject all suggestions"
+              >
+                ❌ Reject All
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
