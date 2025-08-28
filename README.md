@@ -99,7 +99,7 @@ graph TB
     end
     
     subgraph "Business Logic"
-        AI[AI Service]
+        AI[Agent System]
         DocService[Document Service]
         Export[Export Service]
     end
