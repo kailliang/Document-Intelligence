@@ -4,7 +4,6 @@ import Document from "./Document";
 import LoadingOverlay from "./internal/LoadingOverlay";
 import Logo from "./assets/logo.png";
 import ChatPanel from "./ChatPanel";
-import TurndownService from "turndown";
 
 const BACKEND_URL = "http://localhost:8080";
 
@@ -507,61 +506,6 @@ function App() {
   }, [appState.currentDocument]);
 
 
-  /**
-   * Export document to markdown
-   */
-  const exportToMarkdown = useCallback(async () => {
-    if (!appState.currentDocument) {
-      alert('Please select a document first');
-      return;
-    }
-
-    if (!editorRef.current) {
-      alert('Editor instance not ready');
-      return;
-    }
-
-    const turndownService = new TurndownService();
-    
-    // Add custom rule for Mermaid diagrams
-    turndownService.addRule('mermaidDiagram', {
-      filter: function (node) {
-        return (
-          node.nodeName === 'DIV' && 
-          ((node as Element).getAttribute('data-type') === 'mermaid-diagram' || 
-           (node as Element).classList.contains('mermaid-node'))
-        );
-      },
-      replacement: function (_content, node) {
-        const element = node as Element;
-        const syntax = element.getAttribute('data-syntax');
-        const title = element.getAttribute('data-title');
-        
-        if (syntax) {
-          let mermaidBlock = '```mermaid\n' + syntax + '\n```';
-          if (title) {
-            mermaidBlock = `### ${title}\n\n${mermaidBlock}`;
-          }
-          return '\n\n' + mermaidBlock + '\n\n';
-        }
-        return '';
-      }
-    });
-    
-    const markdownContent = turndownService.turndown(editorRef.current.getHTML());
-
-    const blob = new Blob([markdownContent], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${appState.currentDocument.title}_v${appState.currentDocument.version_number}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    console.log('✅ Markdown export successful');
-  }, [appState.currentDocument]);
 
 
 
@@ -789,13 +733,6 @@ function App() {
                     className="w-full p-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
                   >
                     📄 Export PDF
-                  </button>
-                  <button
-                    onClick={exportToMarkdown}
-                    disabled={!appState.currentDocument}
-                    className="w-full p-2 text-sm bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 opacity-75"
-                  >
-                    📝 Export Markdown
                   </button>
                 </div>
               )}
