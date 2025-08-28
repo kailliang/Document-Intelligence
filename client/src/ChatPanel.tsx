@@ -193,7 +193,7 @@ export default function ChatPanel({
   const defaultStages = stageConfigurations.document_analysis;
 
   // WebSocket connection to unified chat endpoint
-  const socketUrl = `ws://localhost:8000/ws/chat`;
+  const socketUrl = `ws://localhost:8080/ws/chat`;
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const maxReconnectAttempts = 10;
@@ -297,7 +297,7 @@ export default function ChatPanel({
       try {
         console.log(`Loading chat history for document ${documentId}, version ${documentVersion}`);
         
-        const response = await fetch(`http://localhost:8000/api/chat/history/${documentId}/${documentVersion}`);
+        const response = await fetch(`http://localhost:8080/api/chat/history/${documentId}/${documentVersion}`);
         const data = await response.json();
         
         if (data.success && data.messages) {
@@ -849,7 +849,7 @@ export default function ChatPanel({
         
         // Call API to mark card as accepted
         const response = await fetch(
-          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=accepted`,
+          `http://localhost:8080/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=accepted`,
           { method: 'POST' }
         );
         
@@ -919,7 +919,7 @@ export default function ChatPanel({
         
         // Call API to mark card as dismissed
         const response = await fetch(
-          `http://localhost:8000/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=dismissed`,
+          `http://localhost:8080/api/chat/suggestion-action/${documentId}/${documentVersion}/${messageId}?card_id=${cardId}&action=dismissed`,
           { method: 'POST' }
         );
         

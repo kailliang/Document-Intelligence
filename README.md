@@ -146,8 +146,8 @@ graph TB
 ./stop-dev.sh     # Clean shutdown
 
 # Manual setup for debugging
-cd client && npm run dev     # Frontend on :5173
-cd server && uvicorn app.__main__:app --reload  # Backend on :8000
+cd client && npm run dev     # Frontend on :3000
+cd server && uvicorn app.__main__:app --reload  # Backend on :8080
 ```
 
 ### CI/CD Pipeline
@@ -178,7 +178,7 @@ cd server && uvicorn app.__main__:app --reload  # Backend on :8000
 
 ## 📝 Documentation
 
-- **API Documentation**: Auto-generated with FastAPI at `http://localhost:8000/docs` when running
+- **API Documentation**: Auto-generated with FastAPI at `http://localhost:8080/docs` when running
 - **System Architecture**: Comprehensive architecture documentation in `SYSTEM_ARCHITECTURE.md`
 - **Development Guide**: Setup instructions in `start-stop-dev.md`
 

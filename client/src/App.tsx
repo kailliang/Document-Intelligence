@@ -6,7 +6,7 @@ import Logo from "./assets/logo.png";
 import ChatPanel from "./ChatPanel";
 import TurndownService from "turndown";
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "http://localhost:8080";
 
 
 // TypeScript interfaces for better type safety

@@ -49,6 +49,10 @@ async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str 
     }
     
     try:
+        # Check if WebSocket is still connected before sending
+        if hasattr(websocket, 'client_state') and websocket.client_state.name != 'CONNECTED':
+            logger.warning(f"WebSocket not connected, skipping stage: {stage['name']}")
+            return
         await websocket.send_text(json.dumps(stage_msg))
         logger.info(f"📊 Sent processing stage: {stage['name']}")
     except Exception as e:
@@ -243,14 +247,28 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
             "message": "AI Assistant connected and ready",
             "timestamp": datetime.utcnow().isoformat()
         }
-        await websocket.send_text(json.dumps(success_msg))
-        logger.info("✅ Connection success message sent")
+        try:
+            await websocket.send_text(json.dumps(success_msg))
+            logger.info("✅ Connection success message sent")
+        except Exception as e:
+            logger.error(f"Failed to send connection success message: {e}")
+            return
         
         while True:
             try:
                 # Receive message from client
-                data = await websocket.receive_json()
-                logger.info(f"📨 Received message: {data.get('message', '')[:100]}...")
+                try:
+                    data = await websocket.receive_json()
+                    logger.info(f"📨 Received message: {data.get('message', '')[:100]}...")
+                except WebSocketDisconnect:
+                    logger.info("🔌 Client disconnected during message receive")
+                    break
+                except Exception as e:
+                    if "1001" in str(e):
+                        logger.info("🔌 Client disconnected (going away)")
+                        break
+                    else:
+                        raise e
                 
                 # Extract message data
                 user_message = data.get("message", "")
@@ -264,7 +282,11 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                         "message": "Please provide a message",
                         "timestamp": datetime.utcnow().isoformat()
                     }
-                    await websocket.send_text(json.dumps(error_msg))
+                    try:
+                        await websocket.send_text(json.dumps(error_msg))
+                    except Exception as e:
+                        logger.error(f"Failed to send validation error: {e}")
+                        break
                     continue
                 
                 # Save user message to chat history
@@ -501,8 +523,12 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                     "agents_used": agents_used,
                     "timestamp": datetime.utcnow().isoformat()
                 }
-                await websocket.send_text(json.dumps(response))
-                logger.info(f"📤 Response sent: {len(messages)} messages")
+                try:
+                    await websocket.send_text(json.dumps(response))
+                    logger.info(f"📤 Response sent: {len(messages)} messages")
+                except Exception as e:
+                    logger.error(f"Failed to send response: {e}")
+                    break
                 
             except json.JSONDecodeError as e:
                 logger.error(f"❌ JSON decode error: {e}")
@@ -511,21 +537,38 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                     "message": "Invalid message format",
                     "timestamp": datetime.utcnow().isoformat()
                 }
-                await websocket.send_text(json.dumps(error_msg))
+                try:
+                    await websocket.send_text(json.dumps(error_msg))
+                except Exception as send_e:
+                    logger.error(f"Failed to send JSON error message: {send_e}")
+                    break
                 
             except Exception as e:
-                logger.error(f"❌ Message processing error: {e}")
-                error_msg = {
-                    "type": "processing_error",
-                    "message": f"Failed to process message: {str(e)}",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                await websocket.send_text(json.dumps(error_msg))
+                # Check if it's a client disconnect before logging as error
+                if "1001" in str(e) or isinstance(e, WebSocketDisconnect):
+                    logger.info("🔌 Client disconnected during message processing")
+                    break
+                else:
+                    logger.error(f"❌ Message processing error: {e}")
+                    error_msg = {
+                        "type": "processing_error",
+                        "message": f"Failed to process message: {str(e)}",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    try:
+                        await websocket.send_text(json.dumps(error_msg))
+                    except Exception as send_e:
+                        logger.info(f"Client disconnected while sending error message")
+                        break
     
     except WebSocketDisconnect:
         logger.info("🔌 Unified chat WebSocket connection disconnected")
     except Exception as e:
-        logger.error(f"❌ Unified chat WebSocket error: {e}")
+        # Don't log as error if it's a normal client disconnect (1001 = going away)
+        if "1001" in str(e):
+            logger.info("🔌 Client disconnected (going away)")
+        else:
+            logger.error(f"❌ Unified chat WebSocket error: {e}")
     finally:
         # WebSocket cleanup - database sessions are handled per operation
         pass

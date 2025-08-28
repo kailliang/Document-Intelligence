@@ -52,8 +52,8 @@ export interface DocumentProps {
 
 // Use enhanced WebSocket endpoint (supports Function Calling)
 const SOCKET_URL = import.meta.env.VITE_USE_ENHANCED_WS === 'true' 
-  ? "ws://localhost:8000/ws/enhanced"
-  : "ws://localhost:8000/ws";
+  ? "ws://localhost:8080/ws/enhanced"
+  : "ws://localhost:8080/ws";
 
 export default function Document({ 
   onContentChange, 

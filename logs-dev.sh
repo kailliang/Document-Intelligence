@@ -24,19 +24,19 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Check port usage
 echo "🌐 Port Status:"
-netstat -an | grep -E "(5173|8000)" | grep LISTEN || echo "❌ No listening ports found"
+netstat -an | grep -E "(3000|8080)" | grep LISTEN || echo "❌ No listening ports found"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Test service availability
 echo "🔍 Service Connection Test:"
-if curl -s http://localhost:8000/docs > /dev/null; then
+if curl -s http://localhost:8080/docs > /dev/null; then
     echo "✅ Backend API accessible"
 else
     echo "❌ Backend API not accessible"
 fi
 
-if curl -s http://localhost:5173 > /dev/null; then
+if curl -s http://localhost:3000 > /dev/null; then
     echo "✅ Frontend app accessible"
 else
     echo "❌ Frontend app not accessible"

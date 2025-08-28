@@ -39,8 +39,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install Playwright browsers
 RUN playwright install chromium
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
+# Make port 8080 available to the world outside this container
+EXPOSE 8080
 
 # Run app.py when the container launches
-CMD ["uvicorn", "app.__main__:app", "--host", "0.0.0.0", "--reload"]
+CMD ["uvicorn", "app.__main__:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import insert, select, update, func
 from sqlalchemy.orm import Session
 
-from app.internal.data import DOCUMENT_1, DOCUMENT_2
+import app.internal.data as data_module
 from bs4 import BeautifulSoup
 from app.internal.db import Base, SessionLocal, engine, get_db
 from app.internal.text_utils import html_to_plain_text, validate_text_for_ai, StreamingJSONParser
@@ -66,57 +66,47 @@ async def lifespan(_: FastAPI):
         # Check if data has already been initialised (avoid duplicate initialisation)
         existing_doc = db.scalar(select(models.Document).where(models.Document.id == 1))
         if not existing_doc:
-            # Create first document (automatically extract title from HTML)
-            doc1_title = extract_title_from_html(DOCUMENT_1)
-            doc1 = models.Document(
-                id=1,
-                title=doc1_title,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            db.add(doc1)
-            db.flush()  # Ensure doc1 has ID
+            # Dynamically discover all DOCUMENT_* variables with proper ordering
+            document_pairs = []
+            for attr_name in dir(data_module):
+                if attr_name.startswith('DOCUMENT_') and not attr_name.endswith('__'):
+                    document_content = getattr(data_module, attr_name)
+                    if isinstance(document_content, str):
+                        document_pairs.append((attr_name, document_content))
             
-            # Create initial version for first document
-            version1 = models.DocumentVersion(
-                document_id=doc1.id,
-                version_number=1,
-                content=DOCUMENT_1,
-                is_active=True,
-                created_at=datetime.utcnow()
-            )
-            db.add(version1)
-            db.flush()  # Ensure version1 has ID
+            # Sort documents by numeric suffix to maintain correct order (DOCUMENT_1, DOCUMENT_2, DOCUMENT_3)
+            document_pairs.sort(key=lambda x: int(x[0].split('_')[1]) if x[0].split('_')[1].isdigit() else 999)
+            documents = [pair[1] for pair in document_pairs]
             
-            # Set document's current version
-            doc1.current_version_id = version1.id
-            
-            # Create second document (automatically extract title from HTML)
-            doc2_title = extract_title_from_html(DOCUMENT_2)
-            doc2 = models.Document(
-                id=2,
-                title=doc2_title,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            db.add(doc2)
-            db.flush()
-            
-            # Create initial version for second document
-            version2 = models.DocumentVersion(
-                document_id=doc2.id,
-                version_number=1,
-                content=DOCUMENT_2,
-                is_active=True,
-                created_at=datetime.utcnow()
-            )
-            db.add(version2)
-            db.flush()
-            
-            # Set document's current version
-            doc2.current_version_id = version2.id
+            # Create documents and versions for each discovered document
+            for i, document_content in enumerate(documents, 1):
+                # Create document (automatically extract title from HTML)
+                doc_title = extract_title_from_html(document_content)
+                doc = models.Document(
+                    id=i,
+                    title=doc_title,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(doc)
+                db.flush()  # Ensure doc has ID
+                
+                # Create initial version for document
+                version = models.DocumentVersion(
+                    document_id=doc.id,
+                    version_number=1,
+                    content=document_content,
+                    is_active=True,
+                    created_at=datetime.utcnow()
+                )
+                db.add(version)
+                db.flush()  # Ensure version has ID
+                
+                # Set document's current version
+                doc.current_version_id = version.id
             
             db.commit()
+            logger.info(f"✅ Seeded {len(documents)} documents dynamically")
     yield
 
 
