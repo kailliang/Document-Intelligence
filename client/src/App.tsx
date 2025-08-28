@@ -54,11 +54,15 @@ interface AppState {
     isOpen: boolean;
     versionNumber: number | null;
   };
+  clearChatDialog: {              // Clear chat confirmation dialog state
+    isOpen: boolean;
+  };
   aiStatus: {                     // AI assistant status
     isConnected: boolean;
     isProcessing: boolean;
     statusMessage: string;
   };
+  chatPanelKey: number;           // Force ChatPanel re-render when cleared
 }
 
 function App() {
@@ -75,11 +79,15 @@ function App() {
       isOpen: false,
       versionNumber: null
     },
+    clearChatDialog: {
+      isOpen: false
+    },
     aiStatus: {
       isConnected: false,
       isProcessing: false,
       statusMessage: 'Connecting...'
     },
+    chatPanelKey: Date.now(),
   });
 
   // Responsive layout detection
@@ -316,6 +324,63 @@ function App() {
       console.error("Error deleting version:", error);
       // Display error message
       const errorMessage = error.response?.data?.detail || "Version deletion failed";
+      alert(errorMessage);
+      setAppState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Open clear chat confirmation dialog
+  const openClearChatDialog = () => {
+    setAppState(prev => ({
+      ...prev,
+      clearChatDialog: {
+        isOpen: true
+      }
+    }));
+  };
+
+  // Close clear chat confirmation dialog
+  const closeClearChatDialog = () => {
+    setAppState(prev => ({
+      ...prev,
+      clearChatDialog: {
+        isOpen: false
+      }
+    }));
+  };
+
+  // Confirm clear chat action
+  const confirmClearChat = async () => {
+    if (!appState.currentDocument) return;
+
+    closeClearChatDialog();
+
+    setAppState(prev => ({ ...prev, isLoading: true }));
+    try {
+      // Clear chat history via API
+      const response = await axios.delete(
+        `${BACKEND_URL}/api/chat/history/${appState.currentDocument.id}/v${appState.currentDocument.version_number}.0`
+      );
+
+      if (response.data.success) {
+        console.log('✅ Chat history cleared successfully');
+        
+        // Force ChatPanel to re-initialize by updating its key
+        // This will trigger the useEffect to reload (empty) chat history
+        setAppState(prev => ({
+          ...prev,
+          isLoading: false,
+          chatPanelKey: Date.now() // Force re-render
+        }));
+        
+        // Success - no popup needed as chat panel will refresh automatically
+      } else {
+        throw new Error(response.data.error || 'Failed to clear chat history');
+      }
+
+    } catch (error: any) {
+      console.error("Error clearing chat history:", error);
+      const errorMessage = error.response?.data?.error || "Failed to clear chat history";
       alert(errorMessage);
       setAppState(prev => ({ ...prev, isLoading: false }));
     }
@@ -849,10 +914,18 @@ function App() {
               </svg>
             </button>
             {!appState.rightSidebarCollapsed && (
-              <div className="flex flex-1">
+              <div className="flex flex-1 items-center justify-between">
                 <h3 className="text-lg font-medium text-gray-800 px-4 py-1.5">
                   🤖 AI Assistant
                 </h3>
+                <button
+                  onClick={openClearChatDialog}
+                  disabled={!appState.currentDocument}
+                  className="mr-2 px-3 py-1 text-xs bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200"
+                  title="Clear chat history for current document version"
+                >
+                  + New Chat
+                </button>
               </div>
             )}
           </div>
@@ -864,7 +937,7 @@ function App() {
               {/* Tab content - limit height to prevent overflow */}
               <div className="flex-1 overflow-hidden flex flex-col">
                 <ChatPanel
-                  key={appState.currentDocument?.id}
+                  key={`${appState.currentDocument?.id}-${appState.chatPanelKey}`}
                   className="h-full"
                   getCurrentDocumentContent={() => editorRef.current?.getHTML() || ""}
                   onDiagramInsertions={handleDiagramInsertions}
@@ -911,6 +984,43 @@ function App() {
                   className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                 >
                   Confirm Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear chat confirmation dialog */}
+      {appState.clearChatDialog.isOpen && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl border border-gray-200">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 mx-auto flex items-center justify-center rounded-full bg-yellow-100">
+                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Clear Chat History
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to clear all chat history for this document version? This action cannot be undone.
+              </p>
+              <div className="flex justify-center space-x-3">
+                <button
+                  onClick={closeClearChatDialog}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmClearChat}
+                  className="px-4 py-2 text-sm font-medium text-white bg-yellow-600 border border-transparent rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                >
+                  Clear Chat
                 </button>
               </div>
             </div>

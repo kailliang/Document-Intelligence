@@ -650,3 +650,43 @@ async def handle_suggestion_card_action(message_id: int, card_id: str, action: s
             "error": str(e),
             "message": f"Failed to {action} card"
         }
+
+
+async def clear_chat_history_for_version(document_id: int, version_number: str) -> Dict:
+    """
+    Clear all chat history for a specific document version.
+    """
+    logger.info(f"🗑️ Clearing chat history for document {document_id}, version {version_number}")
+    
+    try:
+        # Use session context manager for proper cleanup
+        with SessionLocal() as db_session:
+            chat_manager = get_chat_manager(db_session)
+            
+            # Clear chat history
+            success = await chat_manager.clear_chat_history(document_id, version_number)
+            
+            if success:
+                logger.info(f"✅ Chat history cleared successfully for doc {document_id} v{version_number}")
+                return {
+                    "success": True,
+                    "message": f"Chat history cleared for document {document_id} version {version_number}",
+                    "document_id": document_id,
+                    "version_number": version_number
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Failed to clear chat history",
+                    "document_id": document_id,
+                    "version_number": version_number
+                }
+        
+    except Exception as e:
+        logger.error(f"Error clearing chat history: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "document_id": document_id,
+            "version_number": version_number
+        }

@@ -575,7 +575,8 @@ try:
         ChatRequest,
         unified_chat_websocket_endpoint,
         load_chat_history_for_version,
-        handle_suggestion_card_action
+        handle_suggestion_card_action,
+        clear_chat_history_for_version
     )
     
     # Register legacy enhanced WebSocket endpoint (for backward compatibility)
@@ -604,6 +605,10 @@ try:
         return await handle_suggestion_card_action(
             message_id, card_id, action
         )
+    
+    @app.delete("/api/chat/history/{document_id}/{version_number}")
+    async def clear_chat_history(document_id: int, version_number: str):
+        return await clear_chat_history_for_version(document_id, version_number)
     
     logger.info("✅ Enhanced endpoints registered (including unified chat)")
 except ImportError as e:

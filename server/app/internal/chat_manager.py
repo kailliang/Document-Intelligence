@@ -228,6 +228,36 @@ class ChatHistoryManager:
             logger.error(f"Error getting active suggestion cards: {e}")
             return []
     
+    async def clear_chat_history(self, document_id: int, version_number: str) -> bool:
+        """
+        Clear all chat history for a specific document version.
+        
+        Args:
+            document_id: The document ID
+            version_number: The version number (e.g., "v1.0")
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Delete all chat history records for this document version
+            deleted_count = self.db.query(ChatHistory).filter(
+                and_(
+                    ChatHistory.document_id == document_id,
+                    ChatHistory.version_number == version_number
+                )
+            ).delete(synchronize_session=False)
+            
+            self.db.commit()
+            
+            logger.info(f"Cleared {deleted_count} chat messages for document {document_id} version {version_number}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error clearing chat history: {e}")
+            self.db.rollback()
+            return False
+    
     async def cleanup_old_messages(self, document_id: int, version_number: str, 
                                   keep_count: int = 100) -> int:
         """
