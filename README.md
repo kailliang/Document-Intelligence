@@ -1,15 +1,18 @@
 # Document Intelligence System
 
-A production-ready, full-stack document analysis platform with AI-powered patent review capabilities. Built with React, TypeScript, FastAPI, and OpenAI GPT-4.
+A production-ready, full-stack patent analysis platform with AI-powered document review capabilities. Built with React, TypeScript, FastAPI, and OpenAI GPT-4.1 with advanced WebSocket integration.
 
 ## 🎯 Project Overview
 
-This enterprise-grade application demonstrates advanced full-stack development skills through a sophisticated patent document review system. It showcases modern software engineering practices, AI integration, and complex state management in a real-world application context.
+This enterprise-grade application demonstrates advanced full-stack development skills through a sophisticated patent document review system. It showcases modern software engineering practices, AI integration, unified chat interfaces, and complex state management in a real-world application context.
 
 ### Key Achievements
-- **Real-time AI Integration**: Implemented WebSocket-based streaming for instant AI feedback
-- **Advanced Text Processing**: Built custom ProseMirror extensions for precise document manipulation
-- **Scalable Architecture**: Designed with microservices principles and clean separation of concerns
+- **Unified AI Interface**: Integrated chat and document analysis with persistent history
+- **Advanced WebSocket Handling**: Robust connection management with graceful error recovery
+- **Multi-Agent Architecture**: Ready for specialized AI agents (Legal, Technical, Novelty)
+- **Dynamic Document Management**: Flexible document seeding and version control
+- **Real-time Collaboration**: WebSocket-based streaming for instant AI feedback
+- **Custom Editor Extensions**: Built ProseMirror extensions for precise text manipulation
 - **Production-Ready**: Complete with error handling, state persistence, and performance optimizations
 
 ## 🚀 Technical Stack
@@ -25,9 +28,13 @@ This enterprise-grade application demonstrates advanced full-stack development s
 ### Backend
 - **FastAPI** for high-performance async Python API
 - **SQLAlchemy ORM** with SQLite for robust data persistence
-- **OpenAI GPT-4** integration with Function Calling for advanced AI capabilities
-- **Playwright** for server-side PDF generation
-- **WebSocket** endpoints for real-time streaming
+- **OpenAI GPT-4.1** integration with Function Calling for advanced AI capabilities
+- **LangGraph Multi-Agent System**: Specialized agents for legal, technical, and novelty analysis
+- **Unified WebSocket Chat**: Single endpoint for chat and document analysis
+- **Chat History Persistence**: Per-document-version conversation storage
+- **Dynamic Document Seeding**: Automatic discovery and ordering of patent documents
+- **Playwright** for server-side PDF generation with Mermaid support
+- **Enhanced Error Handling**: Graceful WebSocket disconnection management
 
 ### DevOps & Tools
 - **Docker** containerization for consistent deployment
