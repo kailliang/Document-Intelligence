@@ -492,9 +492,3 @@ async def novelty_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
             # Wait briefly before retry
             import asyncio
             await asyncio.sleep(1)
-        
-    except Exception as e:
-        logger.error(f"Novelty analysis node failed: {e}")
-        return {
-            "novelty_suggestions": []
-        }

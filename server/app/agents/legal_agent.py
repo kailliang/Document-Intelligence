@@ -145,27 +145,6 @@ Document to improve:
         Legacy method - no longer used. Use improve_document instead.
         """
         raise NotImplementedError("Legal agent now uses improve_document method")
-            suggestion: Original suggestion
-            context: Analysis context
-            
-        Returns:
-            Enhanced suggestion
-        """
-        # Improve paragraph number estimation
-        if suggestion.original_text and context.document_content:
-            suggestion.paragraph = self._estimate_paragraph_number(
-                suggestion.original_text, context.document_content
-            )
-        
-        # Enhance type classification for legal issues
-        suggestion.type = self._classify_legal_issue_type(suggestion.description)
-        
-        # Adjust confidence based on legal factors
-        suggestion.confidence = self._calculate_legal_confidence(
-            suggestion, context.document_content
-        )
-        
-        return suggestion
     
     def _classify_legal_issue_type(self, description: str) -> str:
         """
