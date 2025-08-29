@@ -1178,16 +1178,22 @@ export default function ChatPanel({
                         Please analyze this document for issues
                       </button>
                       <button 
-                        onClick={() => setInputMessage("How can I improve the patent claims?")}
+                        onClick={() => setInputMessage("How to write excellent patent claims?")}
                         className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
                       >
-                        How can I improve the patent claims?
+                        How to write excellent patent claims?
                       </button>
                       <button 
-                        onClick={() => setInputMessage("Generate a process flowchart")}
+                        onClick={() => setInputMessage("Generate a process flowchart based on the description provided in the document")}
                         className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
                       >
                         Generate a process flowchart
+                      </button>
+                      <button 
+                        onClick={() => setInputMessage("Create a Mermaid diagram based on the description provided in the document")}
+                        className="w-full text-left px-2 py-1.5 bg-white hover:bg-blue-100 rounded text-xs text-blue-700 border border-blue-200 transition-colors duration-200"
+                      >
+                        Create a Mermaid diagram
                       </button>
                     </div>
                   </div>
@@ -1201,8 +1207,9 @@ export default function ChatPanel({
                     <p className="text-xs font-medium text-blue-600 mb-2">Try asking:</p>
                     <div className="space-y-1 text-xs text-blue-600">
                       <p className="italic">Please analyze this document for issues</p>
-                      <p className="italic">How can I improve the patent claims?</p>
+                      <p className="italic">How to write excellent patent claims?</p>
                       <p className="italic">Generate a process flowchart</p>
+                      <p className="italic">Create a Mermaid diagram</p>
                     </div>
                   </div>
                 </>
