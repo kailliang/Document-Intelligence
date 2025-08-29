@@ -217,7 +217,7 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
         
         # Generate casual chat response
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
             temperature=0.7,  # Higher temperature for more conversational responses
             max_tokens=300,
             messages=[

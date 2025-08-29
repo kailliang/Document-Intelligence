@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import insert, select, update, func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 import app.internal.data as data_module
 from bs4 import BeautifulSoup
@@ -188,50 +189,68 @@ def save(
     Fix variable name conflict:
     - Parameter name changed from document to request, avoid conflict with database object
     """
-    # Find the document
-    document = db.scalar(
-        select(models.Document)
-        .where(models.Document.id == document_id)
-    )
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Find current active version
-    current_version = None
-    if document.current_version_id:
-        current_version = db.scalar(
-            select(models.DocumentVersion)
-            .where(models.DocumentVersion.id == document.current_version_id)
+    try:
+        # Find the document
+        document = db.scalar(
+            select(models.Document)
+            .where(models.Document.id == document_id)
         )
-    
-    # If no current version, get latest version
-    if not current_version:
-        current_version = db.scalar(
-            select(models.DocumentVersion)
-            .where(models.DocumentVersion.document_id == document_id)
-            .order_by(models.DocumentVersion.version_number.desc())
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Find current active version
+        current_version = None
+        if document.current_version_id:
+            current_version = db.scalar(
+                select(models.DocumentVersion)
+                .where(models.DocumentVersion.id == document.current_version_id)
+            )
+        
+        # If no current version, get latest version
+        if not current_version:
+            current_version = db.scalar(
+                select(models.DocumentVersion)
+                .where(models.DocumentVersion.document_id == document_id)
+                .order_by(models.DocumentVersion.version_number.desc())
+            )
+        
+        if not current_version:
+            raise HTTPException(status_code=404, detail="No version found for document")
+        
+        # Update version content
+        db.execute(
+            update(models.DocumentVersion)
+            .where(models.DocumentVersion.id == current_version.id)
+            .values(content=request.content)
         )
-    
-    if not current_version:
-        raise HTTPException(status_code=404, detail="No version found for document")
-    
-    # Update version content
-    db.execute(
-        update(models.DocumentVersion)
-        .where(models.DocumentVersion.id == current_version.id)
-        .values(content=request.content)
-    )
-    
-    # Update document's updated_at timestamp
-    db.execute(
-        update(models.Document)
-        .where(models.Document.id == document_id)
-        .values(updated_at=datetime.utcnow())
-    )
-    
-    db.commit()
-    return {"document_id": document_id, "version_number": current_version.version_number, "content": request.content}
+        
+        # Update document's updated_at timestamp
+        db.execute(
+            update(models.Document)
+            .where(models.Document.id == document_id)
+            .values(updated_at=datetime.utcnow())
+        )
+        
+        db.commit()
+        return {"document_id": document_id, "version_number": current_version.version_number, "content": request.content}
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database operation failed in save endpoint: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Database operation failed. Changes have been rolled back."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error in save endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
 
 
 # ===================================================================
@@ -321,68 +340,86 @@ def create_version(
     5. Create new version and set as active
     6. Update document's current version pointer
     """
-    # Find the document
-    document = db.scalar(
-        select(models.Document)
-        .where(models.Document.id == document_id)
-    )
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Get maximum version number
-    max_version = db.scalar(
-        select(models.DocumentVersion.version_number)
-        .where(models.DocumentVersion.document_id == document_id)
-        .order_by(models.DocumentVersion.version_number.desc())
-    ) or 0
-    
-    new_version_number = max_version + 1
-    
-    # Get current active version content for copying
-    current_version_content = ""
-    if not request.content:  # If no content provided, copy from current active version
-        current_active_version = db.scalar(
-            select(models.DocumentVersion)
+    try:
+        # Find the document
+        document = db.scalar(
+            select(models.Document)
+            .where(models.Document.id == document_id)
+        )
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Get maximum version number
+        max_version = db.scalar(
+            select(models.DocumentVersion.version_number)
             .where(models.DocumentVersion.document_id == document_id)
-            .where(models.DocumentVersion.is_active == True)
+            .order_by(models.DocumentVersion.version_number.desc())
+        ) or 0
+        
+        new_version_number = max_version + 1
+        
+        # Get current active version content for copying
+        current_version_content = ""
+        if not request.content:  # If no content provided, copy from current active version
+            current_active_version = db.scalar(
+                select(models.DocumentVersion)
+                .where(models.DocumentVersion.document_id == document_id)
+                .where(models.DocumentVersion.is_active == True)
+            )
+            if current_active_version:
+                current_version_content = current_active_version.content
+        
+        # Set all existing versions to inactive
+        db.execute(
+            update(models.DocumentVersion)
+            .where(models.DocumentVersion.document_id == document_id)
+            .values(is_active=False)
         )
-        if current_active_version:
-            current_version_content = current_active_version.content
-    
-    # Set all existing versions to inactive
-    db.execute(
-        update(models.DocumentVersion)
-        .where(models.DocumentVersion.document_id == document_id)
-        .values(is_active=False)
-    )
-    
-    # Create new version (copy from current active version if no content provided)
-    new_version = models.DocumentVersion(
-        document_id=document_id,
-        version_number=new_version_number,
-        content=request.content if request.content else current_version_content,
-        is_active=True,
-        created_at=datetime.utcnow()
-    )
-    
-    db.add(new_version)
-    db.flush()  # Get new version's ID
-    
-    # Update document's current version pointer
-    db.execute(
-        update(models.Document)
-        .where(models.Document.id == document_id)
-        .values(
-            current_version_id=new_version.id,
-            updated_at=datetime.utcnow()
+        
+        # Create new version (copy from current active version if no content provided)
+        new_version = models.DocumentVersion(
+            document_id=document_id,
+            version_number=new_version_number,
+            content=request.content if request.content else current_version_content,
+            is_active=True,
+            created_at=datetime.utcnow()
         )
-    )
-    
-    db.commit()
-    db.refresh(new_version)
-    
-    return schemas.DocumentVersionRead.model_validate(new_version)
+        
+        db.add(new_version)
+        db.flush()  # Get new version's ID
+        
+        # Update document's current version pointer
+        db.execute(
+            update(models.Document)
+            .where(models.Document.id == document_id)
+            .values(
+                current_version_id=new_version.id,
+                updated_at=datetime.utcnow()
+            )
+        )
+        
+        db.commit()
+        db.refresh(new_version)
+        
+        return schemas.DocumentVersionRead.model_validate(new_version)
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database operation failed in create_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Database operation failed. Changes have been rolled back."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error in create_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
 
 
 @app.post("/api/documents/{document_id}/switch-version")
@@ -401,60 +438,78 @@ def switch_version(
     4. Update document's current version pointer
     5. Return document information after switch
     """
-    # Find the document
-    document = db.scalar(
-        select(models.Document)
-        .where(models.Document.id == document_id)
-    )
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Find specified version
-    target_version = db.scalar(
-        select(models.DocumentVersion)
-        .where(
-            models.DocumentVersion.document_id == document_id,
-            models.DocumentVersion.version_number == request.version_number
+    try:
+        # Find the document
+        document = db.scalar(
+            select(models.Document)
+            .where(models.Document.id == document_id)
         )
-    )
-    
-    if not target_version:
-        raise HTTPException(status_code=404, detail=f"Version {request.version_number} not found")
-    
-    # Set all versions to inactive
-    db.execute(
-        update(models.DocumentVersion)
-        .where(models.DocumentVersion.document_id == document_id)
-        .values(is_active=False)
-    )
-    
-    # Activate target version
-    db.execute(
-        update(models.DocumentVersion)
-        .where(models.DocumentVersion.id == target_version.id)
-        .values(is_active=True)
-    )
-    
-    # Update document's current version pointer
-    db.execute(
-        update(models.Document)
-        .where(models.Document.id == document_id)
-        .values(
-            current_version_id=target_version.id,
-            updated_at=datetime.utcnow()
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Find specified version
+        target_version = db.scalar(
+            select(models.DocumentVersion)
+            .where(
+                models.DocumentVersion.document_id == document_id,
+                models.DocumentVersion.version_number == request.version_number
+            )
         )
-    )
-    
-    db.commit()
-    
-    return schemas.DocumentWithCurrentVersion(
-        id=document.id,
-        title=document.title,
-        content=target_version.content,
-        version_number=target_version.version_number,
-        last_modified=target_version.created_at
-    )
+        
+        if not target_version:
+            raise HTTPException(status_code=404, detail=f"Version {request.version_number} not found")
+        
+        # Set all versions to inactive
+        db.execute(
+            update(models.DocumentVersion)
+            .where(models.DocumentVersion.document_id == document_id)
+            .values(is_active=False)
+        )
+        
+        # Activate target version
+        db.execute(
+            update(models.DocumentVersion)
+            .where(models.DocumentVersion.id == target_version.id)
+            .values(is_active=True)
+        )
+        
+        # Update document's current version pointer
+        db.execute(
+            update(models.Document)
+            .where(models.Document.id == document_id)
+            .values(
+                current_version_id=target_version.id,
+                updated_at=datetime.utcnow()
+            )
+        )
+        
+        db.commit()
+        
+        return schemas.DocumentWithCurrentVersion(
+            id=document.id,
+            title=document.title,
+            content=target_version.content,
+            version_number=target_version.version_number,
+            last_modified=target_version.created_at
+        )
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database operation failed in switch_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Database operation failed. Changes have been rolled back."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error in switch_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
 
 
 @app.get("/api/documents/{document_id}/versions")
@@ -504,66 +559,84 @@ def delete_version(
     5. If it's the active version, switch to latest other version first
     6. Delete specified version
     """
-    # Find the document
-    document = db.scalar(
-        select(models.Document)
-        .where(models.Document.id == document_id)
-    )
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Check total version count
-    version_count = db.scalar(
-        select(func.count(models.DocumentVersion.id))
-        .where(models.DocumentVersion.document_id == document_id)
-    )
-    
-    if version_count <= 1:
-        raise HTTPException(
-            status_code=400, 
-            detail="Cannot delete the last remaining version"
+    try:
+        # Find the document
+        document = db.scalar(
+            select(models.Document)
+            .where(models.Document.id == document_id)
         )
-    
-    # Find version to delete
-    target_version = db.scalar(
-        select(models.DocumentVersion)
-        .where(
-            models.DocumentVersion.document_id == document_id,
-            models.DocumentVersion.version_number == version_number
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Check total version count
+        version_count = db.scalar(
+            select(func.count(models.DocumentVersion.id))
+            .where(models.DocumentVersion.document_id == document_id)
         )
-    )
-    
-    if not target_version:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Version {version_number} not found"
-        )
-    
-    # If deleting current active version, need to switch to other version first
-    if target_version.is_active:
-        # Find latest other version
-        alternative_version = db.scalar(
+        
+        if version_count <= 1:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot delete the last remaining version"
+            )
+        
+        # Find version to delete
+        target_version = db.scalar(
             select(models.DocumentVersion)
             .where(
                 models.DocumentVersion.document_id == document_id,
-                models.DocumentVersion.id != target_version.id
+                models.DocumentVersion.version_number == version_number
             )
-            .order_by(models.DocumentVersion.version_number.desc())
         )
         
-        if alternative_version:
-            # Activate alternative version
-            alternative_version.is_active = True
-            # Update document's current version pointer
-            document.current_version_id = alternative_version.id
-            document.updated_at = datetime.utcnow()
-    
-    # Delete target version
-    db.delete(target_version)
-    db.commit()
-    
-    return {"message": f"Version {version_number} deleted successfully"}
+        if not target_version:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Version {version_number} not found"
+            )
+        
+        # If deleting current active version, need to switch to other version first
+        if target_version.is_active:
+            # Find latest other version
+            alternative_version = db.scalar(
+                select(models.DocumentVersion)
+                .where(
+                    models.DocumentVersion.document_id == document_id,
+                    models.DocumentVersion.id != target_version.id
+                )
+                .order_by(models.DocumentVersion.version_number.desc())
+            )
+            
+            if alternative_version:
+                # Activate alternative version
+                alternative_version.is_active = True
+                # Update document's current version pointer
+                document.current_version_id = alternative_version.id
+                document.updated_at = datetime.utcnow()
+        
+        # Delete target version
+        db.delete(target_version)
+        db.commit()
+        
+        return {"message": f"Version {version_number} deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database operation failed in delete_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Database operation failed. Changes have been rolled back."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error in delete_version endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred"
+        )
 
 
 

@@ -6,6 +6,7 @@ defining common interfaces, data structures, and utility functions.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Literal
 from dataclasses import dataclass, asdict
@@ -241,7 +242,7 @@ class BaseAgent(ABC):
         """
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o",
+                model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
                 temperature=temperature,
                 messages=messages,
                 tools=self.function_tools,

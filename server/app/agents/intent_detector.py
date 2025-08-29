@@ -6,6 +6,7 @@ classifying user messages into different categories to route them to appropriate
 """
 
 import logging
+import os
 from typing import Dict, Any, Literal
 from openai import AsyncOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -93,7 +94,7 @@ class IntentDetector:
             
             # Call OpenAI API for classification
             response = await self.client.chat.completions.create(
-                model="gpt-4o",
+                model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
                 temperature=0.0,  # Use deterministic output for classification
                 max_tokens=10,    # We only need a single word response
                 messages=[
@@ -134,7 +135,8 @@ class IntentDetector:
         analysis_keywords = [
             "analyze", "review", "check", "improve", "suggest", "suggestion", 
             "patent", "document", "claim", "legal", "technical", "novelty",
-            "issue", "problem", "error", "fix", "compliance", "structure"
+            "issue", "problem", "error", "fix", "compliance", "structure",
+            "create"
         ]
         
         # Mermaid diagram keywords  

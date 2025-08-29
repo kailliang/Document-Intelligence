@@ -6,12 +6,63 @@ Responsible for rendering Mermaid code blocks within HTML into high-quality SVG 
 
 import asyncio
 import logging
+import os
 import re
 from typing import Dict, List, Tuple
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+
+def validate_mermaid_syntax(mermaid_code: str) -> List[str]:
+    """
+    Validate Mermaid diagram syntax and return list of errors.
+    
+    Args:
+        mermaid_code: The Mermaid diagram code to validate
+        
+    Returns:
+        List of validation error messages
+    """
+    errors = []
+    lines = mermaid_code.strip().split('\n')
+    
+    # Check if it starts with a valid diagram type
+    if not lines or not any(lines[0].strip().startswith(t) for t in ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram']):
+        errors.append("Missing diagram type declaration (flowchart, graph, etc.)")
+    
+    # Check for incomplete arrows
+    for i, line in enumerate(lines, 1):
+        line = line.strip()
+        # Look for incomplete arrow patterns
+        if re.search(r'\w+\s+--\s*$', line):
+            errors.append(f"Line {i}: Incomplete arrow syntax - use --> instead of --")
+        if re.search(r'\w+\s+-\s*$', line):
+            errors.append(f"Line {i}: Incomplete arrow syntax - missing arrow head")
+    
+    return errors
+
+
+def fix_common_mermaid_errors(mermaid_code: str) -> str:
+    """
+    Fix common Mermaid syntax errors automatically.
+    
+    Args:
+        mermaid_code: The Mermaid diagram code with potential errors
+        
+    Returns:
+        Fixed Mermaid code
+    """
+    # Fix incomplete arrows
+    mermaid_code = re.sub(r'(\w+)\s+--\s*$', r'\1', mermaid_code)  # Remove incomplete arrows at end of line
+    mermaid_code = re.sub(r'(\w+)\s+--\s*\n', r'\1\n', mermaid_code)  # Remove incomplete arrows
+    
+    # Ensure flowchart has proper direction
+    if 'flowchart' in mermaid_code.lower() and not re.search(r'flowchart\s+(TD|LR|RL|BT)', mermaid_code):
+        mermaid_code = re.sub(r'^flowchart\s*$', 'flowchart TD', mermaid_code, flags=re.MULTILINE)
+    
+    return mermaid_code
 
 
 class MermaidRenderer:
@@ -592,25 +643,44 @@ async def generate_mermaid_node(state: dict) -> dict:
         
         # Generate Mermaid code using AI
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
             temperature=0.3,
             messages=[
                 {
                     "role": "system",
-                    "content": """You are a Mermaid diagram expert. Create Mermaid diagrams based on user requests.
+                    "content": """You are a Mermaid diagram expert. Create syntactically correct Mermaid diagrams based on user requests.
+                    
+                    CRITICAL SYNTAX RULES:
+                    - ALL arrows must be complete: --> not --
+                    - ALL nodes must be properly defined before use
+                    - Use valid node shapes: [] for rectangles, () for circles, {} for diamonds
+                    - Flowchart direction: TD (top-down) or LR (left-right)
+                    
+                    VALID ARROW TYPES:
+                    - A --> B (solid arrow)
+                    - A -.-> B (dotted arrow)
+                    - A === B (thick arrow)
+                    - A --- B (solid line, no arrow)
+                    
+                    EXAMPLE CORRECT FLOWCHART:
+                    flowchart TD
+                        A[Start] --> B{Decision}
+                        B --> C[Process 1]
+                        B --> D[Process 2]
+                        C --> E[End]
+                        D --> E
+                    
+                    COMMON MISTAKES TO AVOID:
+                    - Incomplete arrows (F -- instead of F --> G)
+                    - Undefined nodes (using G before defining it)
+                    - Invalid characters in node labels
+                    - Missing flowchart direction declaration
                     
                     Guidelines:
-                    - Use proper Mermaid syntax
-                    - Keep diagrams clear and readable
-                    - Choose appropriate diagram types (flowchart, sequence, class, etc.)
-                    - Include meaningful labels and connections
+                    - Always start with flowchart TD or flowchart LR
+                    - Define all nodes with proper connections
+                    - Use clear, descriptive labels
                     - Return only the Mermaid code without markdown formatting
-                    
-                    Common diagram types:
-                    - flowchart TD/LR for processes and workflows
-                    - sequenceDiagram for interactions
-                    - classDiagram for system structures
-                    - gitgraph for version control
                     """
                 },
                 {"role": "user", "content": user_input}
@@ -623,6 +693,13 @@ async def generate_mermaid_node(state: dict) -> dict:
         import re
         mermaid_code = re.sub(r'^```(?:mermaid)?\n', '', mermaid_code)
         mermaid_code = re.sub(r'\n```$', '', mermaid_code)
+        
+        # Validate Mermaid syntax to prevent common errors
+        validation_errors = validate_mermaid_syntax(mermaid_code)
+        if validation_errors:
+            logger.warning(f"Generated Mermaid has syntax issues: {validation_errors}")
+            # Try to fix common issues
+            mermaid_code = fix_common_mermaid_errors(mermaid_code)
         
         # Return response with mermaid diagram
         return {
