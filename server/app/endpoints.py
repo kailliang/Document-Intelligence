@@ -14,6 +14,7 @@ from app.internal.ai_enhanced import get_ai_enhanced
 from app.internal.text_utils import html_to_plain_text, validate_text_for_ai
 from app.internal.db import get_db, SessionLocal
 from app.internal.chat_manager import get_chat_manager
+from app.agents.graph_builder import execute_chat_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -300,211 +301,47 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                 # Stage 1: Intent Detection
                 await send_processing_stage(websocket, "intent_detection", "system", 0.5)
                 
-                # Real AI integration with intent detection
+                # Use LangGraph workflow for proper intent detection and routing
                 try:
-                    ai = get_ai_enhanced()
+                    logger.info("🤖 Using LangGraph workflow for message processing")
                     
-                    # Determine intent based on keywords
-                    user_lower = user_message.lower()
-                    if any(keyword in user_lower for keyword in ["analyze", "review", "check", "improve", "suggest"]) and document_content.strip():
-                        # Document analysis request - use AI to analyze document
-                        logger.info("🔍 Intent detected: Document analysis")
-                        
-                        # Stage 2: Agent Selection
-                        await send_processing_stage(websocket, "agent_selection", "system", 0.7)
-                        
-                        # Stage 3: Document Parsing
-                        await send_processing_stage(websocket, "document_parsing", "technical", 0.8)
-                        
-                        # Convert HTML to plain text for AI analysis
-                        plain_text = html_to_plain_text(document_content)
-                        logger.info(f"📄 Document text length: {len(plain_text)}")
-                        
-                        if len(plain_text.strip()) < 10:
-                            # Document too short to analyze
-                            content = "The document appears to be empty or too short to analyze. Please add some content first."
-                            messages = [{
-                                "type": "text",
-                                "content": content
-                            }]
-                            intent_detected = "error"
-                            agents_used = ["system"]
-                        else:
-                            # Stage 4: Legal Analysis
-                            await send_processing_stage(websocket, "legal_analysis", "legal", 1.2)
-                            
-                            # Stage 5: Technical Analysis
-                            await send_processing_stage(websocket, "technical_analysis", "technical", 1.5)
-                            
-                            # Use AI to analyze document and generate suggestions
-                            response_chunks = []
-                            async for chunk in ai.review_document_with_functions(plain_text):
-                                if chunk:
-                                    response_chunks.append(chunk)
-                            
-                            # Stage 6: Generating Suggestions
-                            await send_processing_stage(websocket, "generating_suggestions", "ai_enhanced", 0.8)
-                            
-                            full_response = "".join(response_chunks)
-                            
-                            try:
-                                # Parse AI response for suggestions
-                                ai_result = json.loads(full_response)
-                                issues = ai_result.get("issues", [])
-                                
-                                if issues:
-                                    # Convert AI issues to suggestion cards
-                                    cards = []
-                                    for issue in issues:
-                                        card = {
-                                            "id": f"ai_{datetime.utcnow().timestamp()}_{len(cards)}",
-                                            "type": issue.get("type", "General"),
-                                            "severity": issue.get("severity", "medium"),
-                                            "paragraph": issue.get("paragraph", 1),
-                                            "description": issue.get("description", "AI suggestion"),
-                                            "original_text": issue.get("originalText", issue.get("text", "")),
-                                            "replace_to": issue.get("replaceTo", issue.get("suggestion", "")),
-                                            "confidence": issue.get("confidence", 0.8),
-                                            "agent": "ai_enhanced",
-                                            "created_at": datetime.utcnow().isoformat()
-                                        }
-                                        cards.append(card)
-                                    
-                                    # Generate summary statistics
-                                    severity_counts = {"high": 0, "medium": 0, "low": 0}
-                                    type_counts = {}
-                                    for card in cards:
-                                        severity = card.get("severity", "medium")
-                                        if severity in severity_counts:
-                                            severity_counts[severity] += 1
-                                        
-                                        card_type = card.get("type", "General")
-                                        type_counts[card_type] = type_counts.get(card_type, 0) + 1
-                                    
-                                    # Create summary message
-                                    summary_content = f"📋 Document Analysis: Found {len(cards)} improvement suggestions"
-                                    if severity_counts["high"] > 0:
-                                        summary_content += f"\n• 🔴 High Priority: {severity_counts['high']} issues"
-                                    if severity_counts["medium"] > 0:
-                                        summary_content += f"\n• 🟡 Medium Priority: {severity_counts['medium']} issues"
-                                    if severity_counts["low"] > 0:
-                                        summary_content += f"\n• 🔵 Low Priority: {severity_counts['low']} issues"
-                                    
-                                    top_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-                                    if top_types:
-                                        summary_content += f"\n\nMain Issue Types:"
-                                        for type_name, count in top_types:
-                                            summary_content += f"\n• {type_name}: {count} issues"
-                                    
-                                    
-                                    # Create dual messages: summary + cards
-                                    messages = [
-                                        {
-                                            "type": "suggestion_summary",
-                                            "content": summary_content,
-                                            "summary": {
-                                                "total_count": len(cards),
-                                                "severity_counts": severity_counts,
-                                                "type_counts": type_counts,
-                                                "accepted_count": 0,
-                                                "dismissed_count": 0
-                                            }
-                                        },
-                                        {
-                                            "type": "suggestion_cards", 
-                                            "cards": cards
-                                        }
-                                    ]
-                                    intent_detected = "document_analysis"
-                                    agents_used = ["ai_enhanced"]
-                                    
-                                    # Stage 7: Finalizing Results
-                                    await send_processing_stage(websocket, "finalizing_results", "system", 0.5)
-                                    
-                                    logger.info(f"✅ Generated summary + {len(cards)} suggestion cards from AI")
-                                else:
-                                    # Stage 7: Finalizing Results (no issues case)
-                                    await send_processing_stage(websocket, "finalizing_results", "system", 0.5)
-                                    
-                                    # No issues found
-                                    content = "Great! I've analyzed your document and found no significant issues. The document appears to be well-structured."
-                                    messages = [{
-                                        "type": "text",
-                                        "content": content
-                                    }]
-                                    intent_detected = "document_analysis"
-                                    agents_used = ["ai_enhanced"]
-                                    
-                            except json.JSONDecodeError as e:
-                                logger.error(f"❌ AI response parsing failed: {e}")
-                                content = "I've analyzed your document, but encountered an issue processing the results. Please try again."
-                                messages = [{
-                                    "type": "text",
-                                    "content": content
-                                }]
-                                intent_detected = "error"
-                                agents_used = ["ai_enhanced"]
-                                
-                        # Save to chat history and get message IDs (handle multiple messages)
-                        if document_id:
-                            with SessionLocal() as temp_db:
-                                temp_chat_manager = get_chat_manager(temp_db)
-                                for i, message in enumerate(messages):
-                                    if message["type"] == "suggestion_summary":
-                                        saved_message = await temp_chat_manager.save_assistant_message(
-                                            document_id, document_version, message["content"], agents_used
-                                        )
-                                        messages[i]["message_id"] = saved_message.id
-                                    elif message["type"] == "suggestion_cards":
-                                        saved_message = await temp_chat_manager.save_suggestion_cards(
-                                            document_id, document_version, message["cards"], agents_used
-                                        )
-                                        messages[i]["message_id"] = saved_message.id
-                                    elif message["type"] == "text":
-                                        saved_message = await temp_chat_manager.save_assistant_message(
-                                            document_id, document_version, message["content"], agents_used
-                                        )
-                                        messages[i]["message_id"] = saved_message.id
-                    else:
-                        # Regular chat response - use AI chat functionality
-                        logger.info("💬 Intent detected: Chat conversation")
-                        
-                        # Stage 2: Agent Selection (for chat)
-                        await send_processing_stage(websocket, "agent_selection", "system", 0.5)
-                        
-                        # Build message history for context
-                        chat_messages = [{"role": "user", "content": user_message}]
-                        
-                        # Simplified processing for chat (skip analysis stages)
-                        await send_processing_stage(websocket, "finalizing_results", "ai_enhanced", 0.8)
-                        
-                        # Get AI chat response
-                        response_chunks = []
-                        async for chunk in ai.chat_with_document_context(chat_messages, document_content):
-                            if chunk and not chunk.startswith("DIAGRAM_INSERT:"):
-                                response_chunks.append(chunk)
-                        
-                        ai_response = "".join(response_chunks).strip()
-                        if not ai_response:
-                            ai_response = "I'm here to help! You can ask me questions about your document or request an analysis."
-                        
+                    # Execute the full LangGraph workflow
+                    result = await execute_chat_workflow(
+                        user_input=user_message,
+                        document_content=document_content,
+                        document_id=document_id,
+                        version_number=document_version,
+                        chat_history=[]  # You can add actual chat history if needed
+                    )
+                    
+                    # Extract results from workflow
+                    messages = result.get("messages", [])
+                    intent_detected = result.get("intent_detected", "unknown")
+                    agents_used = result.get("agents_used", [])
+                    
+                    logger.info(f"✅ Workflow completed - Intent: {intent_detected}")
+                    
+                    # Handle empty response
+                    if not messages:
                         messages = [{
                             "type": "text",
-                            "content": ai_response
+                            "content": "I'm here to help! You can ask me questions about your document or request an analysis."
                         }]
                         intent_detected = "chat"
-                        agents_used = ["ai_enhanced"]
-                        
-                        # Save assistant message to chat history
-                        if document_id:
-                            with SessionLocal() as temp_db:
-                                temp_chat_manager = get_chat_manager(temp_db)
-                                saved_message = await temp_chat_manager.save_assistant_message(
-                                    document_id, document_version, ai_response, agents_used
-                                )
-                                # Add message ID to response for frontend tracking
-                                messages[0]["message_id"] = saved_message.id
-                            
+                        agents_used = ["system"]
+                    
+                    # Save messages to chat history (if needed)
+                    if document_id:
+                        with SessionLocal() as temp_db:
+                            temp_chat_manager = get_chat_manager(temp_db)
+                            for i, message in enumerate(messages):
+                                if message.get("type") == "text":
+                                    saved_message = await temp_chat_manager.save_assistant_message(
+                                        document_id, document_version, message["content"], agents_used
+                                    )
+                                    messages[i]["message_id"] = saved_message.id
+                                # Add other message type handling as needed
+                    
                 except Exception as e:
                     logger.error(f"❌ AI processing error: {e}")
                     content = "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."

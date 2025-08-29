@@ -301,12 +301,7 @@ async def technical_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if not document_content:
             logger.warning("No document content provided for technical analysis")
             return {
-                **state,
-                "technical_analysis": {
-                    "agent_type": "technical",
-                    "suggestions": [],
-                    "error": "No document content provided"
-                }
+                "technical_suggestions": []
             }
         
         # Create analysis context
@@ -323,19 +318,13 @@ async def technical_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Technical analysis completed: {len(result.suggestions)} suggestions")
         
-        # Add results to state
+        # Return only technical suggestions for parallel execution
         return {
-            **state,
-            "technical_analysis": result.to_dict()
+            "technical_suggestions": result.suggestions
         }
         
     except Exception as e:
         logger.error(f"Technical analysis node failed: {e}")
         return {
-            **state,
-            "technical_analysis": {
-                "agent_type": "technical",
-                "suggestions": [],
-                "error": str(e)
-            }
+            "technical_suggestions": []
         }

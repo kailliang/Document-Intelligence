@@ -6,7 +6,9 @@ all agents and handles the complete chat and analysis pipeline.
 """
 
 import logging
-from typing import Dict, Any, Optional
+import operator
+from typing import Dict, Any, Optional, Annotated
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, SystemMessage
 from openai import AsyncOpenAI
@@ -23,14 +25,40 @@ from ..internal.text_utils import html_to_plain_text
 logger = logging.getLogger(__name__)
 
 
-class ChatWorkflowState(Dict[str, Any]):
+class ChatWorkflowState(TypedDict):
     """
-    State object for the LangGraph workflow.
+    State object for the LangGraph workflow with proper reducers for parallel execution.
     
-    This maintains all state information as the workflow progresses
-    through different nodes and processing stages.
+    This maintains all state information as the workflow progresses through different nodes.
+    Fields with Annotated[list, operator.add] can be safely updated by parallel nodes.
     """
-    pass
+    # Core workflow fields
+    user_input: str
+    document_content: str
+    document_id: Optional[int]
+    version_number: Optional[str]
+    openai_client: Any
+    intent: Optional[str]
+    
+    # Fields that may be updated by parallel nodes (need reducers)
+    technical_suggestions: Annotated[list, operator.add]
+    legal_suggestions: Annotated[list, operator.add]
+    novelty_suggestions: Annotated[list, operator.add]
+    all_suggestions: Annotated[list, operator.add]
+    messages: Annotated[list, operator.add]
+    agents_used: Annotated[list, operator.add]
+    errors: Annotated[list, operator.add]
+    chat_history: Annotated[list, operator.add]
+    
+    # Optional workflow fields
+    intent_confidence: Optional[str]
+    document_processed: Optional[bool]
+    content_length: Optional[int]
+    estimated_paragraphs: Optional[int]
+    agents_recruited: Optional[list]
+    recruitment_complete: Optional[bool]
+    final_analysis: Optional[Dict[str, Any]]
+    error: Optional[str]
 
 
 def create_chat_workflow() -> StateGraph:
@@ -42,7 +70,7 @@ def create_chat_workflow() -> StateGraph:
     """
     logger.info("Building LangGraph chat workflow")
     
-    # Create the state graph
+    # Create the state graph with properly defined state and reducers
     workflow = StateGraph(ChatWorkflowState)
     
     # Add all nodes to the workflow
@@ -54,6 +82,7 @@ def create_chat_workflow() -> StateGraph:
     workflow.add_node("technical_agent", technical_analysis_node)
     workflow.add_node("legal_agent", legal_analysis_node)
     workflow.add_node("novelty_agent", novelty_analysis_node)
+    workflow.add_node("suggestions_aggregator", aggregate_suggestions_node)
     workflow.add_node("lead_agent", lead_evaluation_node)
     workflow.add_node("response_formatter", format_final_response_node)
     
@@ -79,10 +108,13 @@ def create_chat_workflow() -> StateGraph:
     workflow.add_edge("agent_recruiter", "legal_agent")
     workflow.add_edge("agent_recruiter", "novelty_agent")
     
-    # All agents feed into lead agent
-    workflow.add_edge("technical_agent", "lead_agent")
-    workflow.add_edge("legal_agent", "lead_agent")
-    workflow.add_edge("novelty_agent", "lead_agent")
+    # All agents feed into suggestions aggregator (fixes concurrent update issue)
+    workflow.add_edge("technical_agent", "suggestions_aggregator")
+    workflow.add_edge("legal_agent", "suggestions_aggregator")
+    workflow.add_edge("novelty_agent", "suggestions_aggregator")
+    
+    # Aggregator feeds into lead agent
+    workflow.add_edge("suggestions_aggregator", "lead_agent")
     
     # Lead agent feeds into response formatter
     workflow.add_edge("lead_agent", "response_formatter")
@@ -212,7 +244,7 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
                     "content": "I'm here to help with patent document analysis. How can I assist you today?",
                     "timestamp": "2024-01-01T00:00:00Z"
                 }],
-                "intent_detected": "casual_chat"
+                "intent": "casual_chat"
             }
         
         # Generate casual chat response
@@ -242,7 +274,7 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
                 "content": chat_response,
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent_detected": "casual_chat"
+            "intent": "casual_chat"
         }
         
     except Exception as e:
@@ -254,7 +286,7 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
                 "content": "I'm here to help with patent document analysis. What would you like to know?",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent_detected": "casual_chat",
+            "intent": "casual_chat",
             "error": str(e)
         }
 
@@ -306,6 +338,53 @@ async def recruit_agents_node(state: ChatWorkflowState) -> ChatWorkflowState:
         }
 
 
+async def aggregate_suggestions_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Aggregate suggestions from all parallel agents.
+    
+    This node collects results from technical, legal, and novelty agents
+    that run in parallel and combines them into a single list.
+    
+    Args:
+        state: Current workflow state with agent-specific suggestion lists
+        
+    Returns:
+        Updated state with aggregated suggestions
+    """
+    try:
+        logger.info("Aggregating suggestions from parallel agents")
+        
+        all_suggestions = []
+        
+        # Collect from each agent's specific key
+        if state.get("technical_suggestions"):
+            all_suggestions.extend(state["technical_suggestions"])
+            logger.info(f"Added {len(state['technical_suggestions'])} technical suggestions")
+        
+        if state.get("legal_suggestions"):
+            all_suggestions.extend(state["legal_suggestions"])
+            logger.info(f"Added {len(state['legal_suggestions'])} legal suggestions")
+        
+        if state.get("novelty_suggestions"):
+            all_suggestions.extend(state["novelty_suggestions"])
+            logger.info(f"Added {len(state['novelty_suggestions'])} novelty suggestions")
+        
+        logger.info(f"Aggregated {len(all_suggestions)} total suggestions from agents")
+        
+        # Return only the keys this node updates
+        return {
+            "all_suggestions": all_suggestions,
+            "agents_used": ["technical", "legal", "novelty"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error aggregating suggestions: {e}")
+        return {
+            "all_suggestions": [],
+            "error": str(e)
+        }
+
+
 async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowState:
     """
     Format the final response with all analysis results.
@@ -325,26 +404,24 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
         
         if final_analysis.get("error"):
             return {
-                **state,
                 "messages": [{
                     "type": "text",
                     "content": f"I encountered an issue while analyzing your document: {final_analysis['error']}. Please try again or check your document content.",
                     "timestamp": "2024-01-01T00:00:00Z"
                 }],
-                "intent_detected": "document_analysis"
+                "intent": "document_analysis"
             }
         
         suggestions = final_analysis.get("suggestions", [])
         
         if not suggestions:
             return {
-                **state,
                 "messages": [{
                     "type": "text",
                     "content": "I've analyzed your document and everything looks good! No specific improvements were identified at this time.",
                     "timestamp": "2024-01-01T00:00:00Z"
                 }],
-                "intent_detected": "document_analysis",
+                "intent": "document_analysis",
                 "agents_used": agents_used
             }
         
@@ -371,22 +448,20 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
         logger.info(f"Final response formatted: {len(messages)} messages, {len(suggestions)} suggestion cards")
         
         return {
-            **state,
             "messages": messages,
-            "intent_detected": "document_analysis",
+            "intent": "document_analysis",
             "agents_used": agents_used
         }
         
     except Exception as e:
         logger.error(f"Response formatting failed: {e}")
         return {
-            **state,
             "messages": [{
                 "type": "text",
                 "content": "I encountered an issue while formatting the analysis results. Please try again.",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent_detected": "document_analysis",
+            "intent": "document_analysis",
             "error": str(e)
         }
 
@@ -396,7 +471,7 @@ def create_initial_state(user_input: str, document_content: str = "",
                         version_number: Optional[str] = None,
                         chat_history: Optional[list] = None) -> ChatWorkflowState:
     """
-    Create initial state for the workflow.
+    Create initial state for the workflow that matches ChatWorkflowState structure.
     
     Args:
         user_input: User's message
@@ -411,17 +486,36 @@ def create_initial_state(user_input: str, document_content: str = "",
     # Get OpenAI client
     openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
-    initial_state = ChatWorkflowState({
+    # Create initial state matching TypedDict structure
+    initial_state: ChatWorkflowState = {
+        # Required core fields
         "user_input": user_input,
-        "document_content": document_content,
+        "document_content": document_content or "",
         "document_id": document_id,
         "version_number": version_number,
-        "chat_history": chat_history or [],
         "openai_client": openai_client,
+        "intent": None,
+        
+        # Fields with reducers (start as empty lists)
+        "technical_suggestions": [],
+        "legal_suggestions": [],
+        "novelty_suggestions": [],
+        "all_suggestions": [],
         "messages": [],
         "agents_used": [],
-        "errors": []
-    })
+        "errors": [],
+        "chat_history": chat_history or [],
+        
+        # Optional fields
+        "intent_confidence": None,
+        "document_processed": None,
+        "content_length": None,
+        "estimated_paragraphs": None,
+        "agents_recruited": None,
+        "recruitment_complete": None,
+        "final_analysis": None,
+        "error": None
+    }
     
     return initial_state
 
@@ -458,15 +552,25 @@ async def execute_chat_workflow(user_input: str, document_content: str = "",
             chat_history=chat_history
         )
         
+        # Add debug logging
+        logger.info(f"Initial state keys: {initial_state.keys()}")
+        logger.info(f"Initial document_content length: {len(initial_state.get('document_content', ''))}")
+        logger.info(f"User input: {initial_state.get('user_input', 'None')[:100]}...")
+        
         # Execute workflow
         result = await workflow.ainvoke(initial_state)
+        
+        # Debug the result
+        logger.info(f"Workflow result keys: {result.keys() if result else 'None'}")
+        logger.info(f"Workflow messages: {result.get('messages', []) if result else 'None'}")
+        logger.info(f"Intent detected: {result.get('intent', 'unknown')}")
         
         logger.info("Chat workflow execution completed successfully")
         
         return {
             "type": "assistant_response",
             "messages": result.get("messages", []),
-            "intent_detected": result.get("intent_detected", "unknown"),
+            "intent_detected": result.get("intent", "unknown"),
             "agents_used": result.get("agents_used", []),
             "timestamp": "2024-01-01T00:00:00Z",
             "success": True

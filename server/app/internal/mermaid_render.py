@@ -11,6 +11,7 @@ import re
 from typing import Dict, List, Tuple
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from .text_utils import html_to_plain_text
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +33,31 @@ def validate_mermaid_syntax(mermaid_code: str) -> List[str]:
     if not lines or not any(lines[0].strip().startswith(t) for t in ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram']):
         errors.append("Missing diagram type declaration (flowchart, graph, etc.)")
     
-    # Check for incomplete arrows
     for i, line in enumerate(lines, 1):
         line = line.strip()
-        # Look for incomplete arrow patterns
+        
+        # Check for incomplete arrows
         if re.search(r'\w+\s+--\s*$', line):
             errors.append(f"Line {i}: Incomplete arrow syntax - use --> instead of --")
         if re.search(r'\w+\s+-\s*$', line):
             errors.append(f"Line {i}: Incomplete arrow syntax - missing arrow head")
+        
+        # Check for parentheses in node labels (the specific issue from console)
+        if re.search(r'\[[^\]]*\([^)]*\)', line):
+            errors.append(f"Line {i}: Parentheses in node labels - use dashes instead")
+        
+        # Check for unescaped parentheses in labels
+        if re.search(r'\[[^\]]*\([^\)]*$', line):
+            errors.append(f"Line {i}: Unclosed parentheses in node label")
+        
+        # Check for truncated words (common patterns) 
+        if re.search(r'(?:Continuo|Analysi|Proces|Comple|Syste|Manag|Generat)(?=\s|$|-->)', line):
+            errors.append(f"Line {i}: Possibly truncated word detected - check for completeness")
+        
+        # Check for very long labels that might get truncated
+        label_match = re.search(r'\[([^\]]+)\]', line)
+        if label_match and len(label_match.group(1)) > 50:
+            errors.append(f"Line {i}: Label too long ({len(label_match.group(1))} chars) - may cause truncation")
     
     return errors
 
@@ -54,15 +72,67 @@ def fix_common_mermaid_errors(mermaid_code: str) -> str:
     Returns:
         Fixed Mermaid code
     """
-    # Fix incomplete arrows
-    mermaid_code = re.sub(r'(\w+)\s+--\s*$', r'\1', mermaid_code)  # Remove incomplete arrows at end of line
-    mermaid_code = re.sub(r'(\w+)\s+--\s*\n', r'\1\n', mermaid_code)  # Remove incomplete arrows
+    # Fix incomplete arrows - more comprehensive patterns
+    mermaid_code = re.sub(r'\s+--\s*$', '', mermaid_code, flags=re.MULTILINE)  # Remove incomplete arrows at end of line
+    mermaid_code = re.sub(r'\s+--\s*\n', '\n', mermaid_code)  # Remove incomplete arrows
+    # Remove entire lines that are just incomplete arrows
+    mermaid_code = re.sub(r'^\s*\w+\s+--\s*$', '', mermaid_code, flags=re.MULTILINE)
+    
+    # Fix parentheses in node labels - replace with dashes
+    mermaid_code = re.sub(r'\[([^\]]*)\(([^\)]*)\)([^\]]*)\]', r'[\1-\2-\3]', mermaid_code)
+    
+    # Fix unclosed parentheses in labels (more comprehensive)
+    mermaid_code = re.sub(r'\[([^\]]*)\([^)]*$', r'["\1"]', mermaid_code)
+    mermaid_code = re.sub(r'\[([^\]]*)\([^)]*(?=-->|$)', r'["\1"]', mermaid_code)
+    
+    # Fix common truncated words (simple string replacement)
+    mermaid_code = mermaid_code.replace('Continuo', 'Continuous')
+    mermaid_code = mermaid_code.replace('Proces', 'Process')
+    mermaid_code = mermaid_code.replace('Comple', 'Complete')
+    mermaid_code = mermaid_code.replace('Analysi', 'Analysis')
+    mermaid_code = mermaid_code.replace('Generat', 'Generate')
+    mermaid_code = mermaid_code.replace('Syste', 'System')
+    mermaid_code = mermaid_code.replace('Manag', 'Manage')
+    
+    # Ensure all labels are properly quoted if they contain spaces
+    mermaid_code = re.sub(r'\[([^"\]]*\s[^"\]]*)\]', r'["\1"]', mermaid_code)
     
     # Ensure flowchart has proper direction
     if 'flowchart' in mermaid_code.lower() and not re.search(r'flowchart\s+(TD|LR|RL|BT)', mermaid_code):
         mermaid_code = re.sub(r'^flowchart\s*$', 'flowchart TD', mermaid_code, flags=re.MULTILINE)
     
     return mermaid_code
+
+
+def create_fallback_diagram(user_input: str) -> str:
+    """
+    Create a simple, guaranteed-to-work Mermaid diagram as fallback.
+    
+    Args:
+        user_input: Original user request for context
+        
+    Returns:
+        Simple working Mermaid diagram
+    """
+    # Extract key words from user input for context
+    key_words = []
+    for word in user_input.lower().split():
+        if len(word) > 3 and word.isalpha():
+            key_words.append(word.capitalize())
+    
+    # Use up to 4 key words, fallback to generic terms
+    if not key_words:
+        key_words = ["Start", "Process", "Decision", "End"]
+    elif len(key_words) < 4:
+        key_words.extend(["Step", "Action", "Result", "Complete"])
+    
+    # Create simple linear flowchart
+    fallback = f'''flowchart TD
+    A["{key_words[0]}"] --> B["{key_words[1]}"]
+    B --> C{{"{key_words[2]}"}}
+    C --> D["{key_words[3] if len(key_words) > 3 else "End"}"]'''
+    
+    return fallback
 
 
 class MermaidRenderer:
@@ -628,6 +698,13 @@ async def generate_mermaid_node(state: dict) -> dict:
         logger.info("Generating Mermaid diagram")
         
         user_input = state.get("user_input", "")
+        document_content = state.get("document_content", "")
+        
+        # Convert HTML to plain text if it contains HTML tags
+        if document_content and ('<' in document_content and '>' in document_content):
+            document_content = html_to_plain_text(document_content)
+            logger.info(f"Converted HTML to plain text, length: {len(document_content)}")
+        
         openai_client = state.get("openai_client")
         
         if not openai_client:
@@ -645,6 +722,7 @@ async def generate_mermaid_node(state: dict) -> dict:
         response = await openai_client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
             temperature=0.3,
+            max_tokens=1000,  # Prevent truncation of diagram syntax
             messages=[
                 {
                     "role": "system",
@@ -662,28 +740,43 @@ async def generate_mermaid_node(state: dict) -> dict:
                     - A === B (thick arrow)
                     - A --- B (solid line, no arrow)
                     
+                    LABEL RULES (CRITICAL):
+                    - NO parentheses () in node labels - use dashes instead: "Step-S1-Process"
+                    - Keep labels under 50 characters to prevent truncation
+                    - Use quotes for multi-word labels: A["Long label text"]
+                    - AVOID special characters: () [] {} <> |\ /
+                    - Replace parentheses with dashes: "(S1)" becomes "-S1-"
+                    - Complete all words - never truncate mid-word
+                    
                     EXAMPLE CORRECT FLOWCHART:
                     flowchart TD
-                        A[Start] --> B{Decision}
-                        B --> C[Process 1]
-                        B --> D[Process 2]
-                        C --> E[End]
+                        A["Camera Focus Setup"] --> B{"Lens Selection"}
+                        B --> C["Continuous Mode -S1-"]
+                        B --> D["Single Shot -S2-"]
+                        C --> E["Image Capture"]
                         D --> E
                     
                     COMMON MISTAKES TO AVOID:
                     - Incomplete arrows (F -- instead of F --> G)
+                    - Parentheses in labels: [text (S1)] - WRONG!
+                    - Truncated words: [Continuo] - WRONG! Should be [Continuous]
                     - Undefined nodes (using G before defining it)
-                    - Invalid characters in node labels
                     - Missing flowchart direction declaration
                     
                     Guidelines:
                     - Always start with flowchart TD or flowchart LR
                     - Define all nodes with proper connections
-                    - Use clear, descriptive labels
+                    - Use clear, descriptive labels with quotes
+                    - Replace all parentheses with dashes
                     - Return only the Mermaid code without markdown formatting
                     """
                 },
-                {"role": "user", "content": user_input}
+                {"role": "user", "content": f"""
+Based on the following document content, {user_input}
+
+Document Content:
+{document_content[:10000] if document_content else "No document provided"}
+"""}
             ]
         )
         
@@ -699,7 +792,18 @@ async def generate_mermaid_node(state: dict) -> dict:
         if validation_errors:
             logger.warning(f"Generated Mermaid has syntax issues: {validation_errors}")
             # Try to fix common issues
+            original_code = mermaid_code
             mermaid_code = fix_common_mermaid_errors(mermaid_code)
+            
+            # Re-validate after fixes
+            remaining_errors = validate_mermaid_syntax(mermaid_code)
+            if remaining_errors:
+                logger.error(f"Mermaid still has errors after fixes: {remaining_errors}")
+                logger.error(f"Original code: {original_code}")
+                logger.error(f"Fixed code: {mermaid_code}")
+                # Use fallback diagram
+                mermaid_code = create_fallback_diagram(user_input)
+                logger.info("Using fallback diagram due to persistent syntax errors")
         
         # Return response with mermaid diagram
         return {

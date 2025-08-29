@@ -172,7 +172,7 @@ async def detect_intent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         if not user_input:
             logger.warning("No user input provided for intent detection")
-            return {**state, "intent": "casual_chat"}
+            return {"intent": "casual_chat"}
         
         # Get OpenAI client from state or create new one
         openai_client = state.get("openai_client")
@@ -189,7 +189,6 @@ async def detect_intent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"Intent detection complete: {intent}")
         
         return {
-            **state,
             "intent": intent,
             "intent_confidence": "high"  # Could be enhanced with confidence scoring
         }
@@ -201,7 +200,6 @@ async def detect_intent_node(state: Dict[str, Any]) -> Dict[str, Any]:
         intent = detector.classify_keywords(state.get("user_input", ""))
         
         return {
-            **state,
             "intent": intent,
             "intent_confidence": "low"
         }

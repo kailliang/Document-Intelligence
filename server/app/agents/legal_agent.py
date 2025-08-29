@@ -372,12 +372,7 @@ async def legal_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if not document_content:
             logger.warning("No document content provided for legal analysis")
             return {
-                **state,
-                "legal_analysis": {
-                    "agent_type": "legal",
-                    "suggestions": [],
-                    "error": "No document content provided"
-                }
+                "legal_suggestions": []
             }
         
         # Create analysis context
@@ -394,19 +389,13 @@ async def legal_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Legal analysis completed: {len(result.suggestions)} suggestions")
         
-        # Add results to state
+        # Return only legal suggestions for parallel execution
         return {
-            **state,
-            "legal_analysis": result.to_dict()
+            "legal_suggestions": result.suggestions
         }
         
     except Exception as e:
         logger.error(f"Legal analysis node failed: {e}")
         return {
-            **state,
-            "legal_analysis": {
-                "agent_type": "legal",
-                "suggestions": [],
-                "error": str(e)
-            }
+            "legal_suggestions": []
         }

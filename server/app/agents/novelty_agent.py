@@ -410,12 +410,7 @@ async def novelty_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         if not document_content:
             logger.warning("No document content provided for novelty analysis")
             return {
-                **state,
-                "novelty_analysis": {
-                    "agent_type": "novelty",
-                    "suggestions": [],
-                    "error": "No document content provided"
-                }
+                "novelty_suggestions": []
             }
         
         # Create analysis context
@@ -432,19 +427,13 @@ async def novelty_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Novelty analysis completed: {len(result.suggestions)} suggestions")
         
-        # Add results to state
+        # Return only novelty suggestions for parallel execution
         return {
-            **state,
-            "novelty_analysis": result.to_dict()
+            "novelty_suggestions": result.suggestions
         }
         
     except Exception as e:
         logger.error(f"Novelty analysis node failed: {e}")
         return {
-            **state,
-            "novelty_analysis": {
-                "agent_type": "novelty",
-                "suggestions": [],
-                "error": str(e)
-            }
+            "novelty_suggestions": []
         }

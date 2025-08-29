@@ -552,40 +552,42 @@ async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         Updated state with final synthesized recommendations
     """
     try:
-        # Extract agent results from state
+        # Get all suggestions directly from aggregator
+        all_suggestions = state.get("all_suggestions", [])
+        technical_suggestions = state.get("technical_suggestions", [])
+        legal_suggestions = state.get("legal_suggestions", [])
+        novelty_suggestions = state.get("novelty_suggestions", [])
+        
+        # Create agent results from aggregated suggestions
         agent_results = {}
         
-        technical_result = state.get("technical_analysis")
-        if technical_result and not technical_result.get("error"):
+        if technical_suggestions:
             agent_results["technical"] = AnalysisResult(
                 agent_type="technical",
-                suggestions=[Suggestion.from_dict(s) for s in technical_result.get("suggestions", [])],
-                processing_time=technical_result.get("processing_time", 0.0),
-                confidence=technical_result.get("confidence", 0.0)
+                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in technical_suggestions],
+                processing_time=0.0,
+                confidence=0.8
             )
-        
-        legal_result = state.get("legal_analysis")
-        if legal_result and not legal_result.get("error"):
+            
+        if legal_suggestions:
             agent_results["legal"] = AnalysisResult(
                 agent_type="legal",
-                suggestions=[Suggestion.from_dict(s) for s in legal_result.get("suggestions", [])],
-                processing_time=legal_result.get("processing_time", 0.0),
-                confidence=legal_result.get("confidence", 0.0)
+                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in legal_suggestions],
+                processing_time=0.0,
+                confidence=0.8
             )
-        
-        novelty_result = state.get("novelty_analysis")
-        if novelty_result and not novelty_result.get("error"):
+            
+        if novelty_suggestions:
             agent_results["novelty"] = AnalysisResult(
                 agent_type="novelty",
-                suggestions=[Suggestion.from_dict(s) for s in novelty_result.get("suggestions", [])],
-                processing_time=novelty_result.get("processing_time", 0.0),
-                confidence=novelty_result.get("confidence", 0.0)
+                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in novelty_suggestions],
+                processing_time=0.0,
+                confidence=0.8
             )
         
         if not agent_results:
             logger.warning("No agent results available for lead evaluation")
             return {
-                **state,
                 "final_analysis": {
                     "agent_type": "lead",
                     "suggestions": [],
@@ -608,9 +610,8 @@ async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Lead evaluation completed: {len(result.suggestions)} final suggestions")
         
-        # Add results to state
+        # Return only the keys this node updates
         return {
-            **state,
             "final_analysis": result.to_dict(),
             "agents_used": list(agent_results.keys()) + ["lead"]
         }
@@ -618,7 +619,6 @@ async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Lead evaluation node failed: {e}")
         return {
-            **state,
             "final_analysis": {
                 "agent_type": "lead",
                 "suggestions": [],
