@@ -94,67 +94,57 @@ You are a patent law specialist focused on legal compliance and patent requireme
 - Written description problems
 - Best mode disclosure concerns
 
-Analyze the provided document for legal compliance issues and provide specific recommendations for improvement.
+**Response Format:**
+Return the complete improved document text with each paragraph separated by \\n. Do not explain changes or provide analysis - just return the improved document text that conforms to patent legal standards.
+
+Document to improve:
 """
     
     @property
     def function_tools(self) -> List[Dict[str, Any]]:
-        return [create_suggestion_function_schema("Legal Compliance")]
+        # No function tools needed - agent returns improved text directly
+        return []
     
-    async def _perform_analysis(self, context: AnalysisContext) -> List[Suggestion]:
+    async def improve_document(self, context: AnalysisContext) -> str:
         """
-        Perform legal analysis of the patent document.
+        Improve the patent document from legal compliance perspective.
         
         Args:
             context: Analysis context containing document content
             
         Returns:
-            List of legal compliance suggestions
+            Improved document text with legal compliance enhancements
         """
         try:
-            # Prepare analysis messages
+            # Prepare improvement messages
             messages = [
                 {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": f"""
-Please analyze this patent document for legal compliance issues:
-
-{context.document_content}
-
-Focus on:
-1. Legal compliance with patent law requirements
-2. Claim structure, dependencies, and construction
-3. Proper legal terminology and language usage
-4. Regulatory compliance (USPTO requirements)
-5. Potential legal vulnerabilities or risks
-
-Provide specific suggestions for legal improvements using the create_suggestion function.
-"""}
+                {"role": "user", "content": context.document_content}
             ]
             
-            # Call OpenAI API with function calling
-            response = await self._call_openai_with_functions(messages, temperature=0.1)
+            # Call OpenAI API for document improvement
+            response = await self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,  # Low temperature for consistent legal writing
+                max_tokens=4000
+            )
             
-            # Parse function calls into suggestions
-            suggestions = self._parse_function_calls(response)
+            improved_document = response.choices[0].message.content.strip()
             
-            # Enhance suggestions with legal-specific improvements
-            enhanced_suggestions = []
-            for suggestion in suggestions:
-                enhanced_suggestion = self._enhance_legal_suggestion(suggestion, context)
-                enhanced_suggestions.append(enhanced_suggestion)
-            
-            return enhanced_suggestions
+            logger.info(f"Legal agent improved document: {len(improved_document)} characters")
+            return improved_document
             
         except Exception as e:
-            logger.error(f"Legal analysis failed: {e}")
-            raise
+            logger.error(f"Legal document improvement failed: {e}")
+            # Return original document if improvement fails
+            return context.document_content
     
-    def _enhance_legal_suggestion(self, suggestion: Suggestion, 
-                                context: AnalysisContext) -> Suggestion:
+    async def _perform_analysis(self, context: AnalysisContext) -> List[Suggestion]:
         """
-        Enhance a legal suggestion with additional context and validation.
-        
-        Args:
+        Legacy method - no longer used. Use improve_document instead.
+        """
+        raise NotImplementedError("Legal agent now uses improve_document method")
             suggestion: Original suggestion
             context: Analysis context
             
@@ -353,49 +343,61 @@ async def create_legal_agent(openai_client: AsyncOpenAI) -> LegalAgent:
 # Node function for LangGraph integration
 async def legal_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    LangGraph node function for legal analysis.
+    LangGraph node function for legal document improvement.
     
     Args:
         state: Current workflow state
         
     Returns:
-        Updated state with legal analysis results
+        Updated state with legal improvement results
     """
-    try:
-        # Extract required information from state
-        openai_client = state.get("openai_client")
-        document_content = state.get("document_content", "")
-        
-        if not openai_client:
-            raise ValueError("OpenAI client not available in state")
-        
-        if not document_content:
-            logger.warning("No document content provided for legal analysis")
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Extract required information from state
+            openai_client = state.get("openai_client")
+            document_content = state.get("document_content", "")
+            
+            if not openai_client:
+                raise ValueError("OpenAI client not available in state")
+            
+            if not document_content:
+                logger.warning("No document content provided for legal improvement")
+                return {
+                    "improved_documents": [{"agent": "legal", "content": ""}]
+                }
+            
+            # Create analysis context
+            context = AnalysisContext(
+                document_content=document_content,
+                document_id=state.get("document_id"),
+                version_number=state.get("version_number"),
+                user_input=state.get("user_input")
+            )
+            
+            # Create and run legal agent
+            agent = await create_legal_agent(openai_client)
+            improved_document = await agent.improve_document(context)
+            
+            logger.info(f"Legal improvement completed: {len(improved_document)} characters")
+            
+            # Return improved document for parallel execution
             return {
-                "legal_suggestions": []
+                "improved_documents": [{"agent": "legal", "content": improved_document}]
             }
-        
-        # Create analysis context
-        context = AnalysisContext(
-            document_content=document_content,
-            document_id=state.get("document_id"),
-            version_number=state.get("version_number"),
-            user_input=state.get("user_input")
-        )
-        
-        # Create and run legal agent
-        agent = await create_legal_agent(openai_client)
-        result = await agent.analyze(context)
-        
-        logger.info(f"Legal analysis completed: {len(result.suggestions)} suggestions")
-        
-        # Return only legal suggestions for parallel execution
-        return {
-            "legal_suggestions": result.suggestions
-        }
-        
-    except Exception as e:
-        logger.error(f"Legal analysis node failed: {e}")
-        return {
-            "legal_suggestions": []
-        }
+            
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Legal improvement failed (attempt {retry_count}/{max_retries}): {e}")
+            
+            if retry_count >= max_retries:
+                # Return original content on final failure
+                return {
+                    "improved_documents": [{"agent": "legal", "content": state.get("document_content", "")}]
+                }
+            
+            # Wait briefly before retry
+            import asyncio
+            await asyncio.sleep(1)

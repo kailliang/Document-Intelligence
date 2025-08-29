@@ -101,14 +101,57 @@ You are a patent novelty and innovation specialist. Your expertise is in identif
 - Improving description of technical advances
 - Adding detail to innovative elements
 
-Analyze the provided document to identify opportunities to strengthen novelty and innovation presentation.
+**Response Format:**
+Return the complete improved document text with each paragraph separated by \\n. Do not explain changes or provide analysis - just return the improved document text that emphasizes novelty and innovation.
+
+Document to improve:
 """
     
     @property
     def function_tools(self) -> List[Dict[str, Any]]:
-        return [create_suggestion_function_schema("Novelty & Innovation")]
+        # No function tools needed - agent returns improved text directly
+        return []
+    
+    async def improve_document(self, context: AnalysisContext) -> str:
+        """
+        Improve the patent document from novelty and innovation perspective.
+        
+        Args:
+            context: Analysis context containing document content
+            
+        Returns:
+            Improved document text with enhanced novelty presentation
+        """
+        try:
+            # Prepare improvement messages
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": context.document_content}
+            ]
+            
+            # Call OpenAI API for document improvement
+            response = await self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,  # Low temperature for consistent novelty writing
+                max_tokens=4000
+            )
+            
+            improved_document = response.choices[0].message.content.strip()
+            
+            logger.info(f"Novelty agent improved document: {len(improved_document)} characters")
+            return improved_document
+            
+        except Exception as e:
+            logger.error(f"Novelty document improvement failed: {e}")
+            # Return original document if improvement fails
+            return context.document_content
     
     async def _perform_analysis(self, context: AnalysisContext) -> List[Suggestion]:
+        """
+        Legacy method - no longer used. Use improve_document instead.
+        """
+        raise NotImplementedError("Novelty agent now uses improve_document method")
         """
         Perform novelty analysis of the patent document.
         
@@ -391,46 +434,64 @@ async def create_novelty_agent(openai_client: AsyncOpenAI) -> NoveltyAgent:
 # Node function for LangGraph integration
 async def novelty_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    LangGraph node function for novelty analysis.
+    LangGraph node function for novelty document improvement.
     
     Args:
         state: Current workflow state
         
     Returns:
-        Updated state with novelty analysis results
+        Updated state with novelty improvement results
     """
-    try:
-        # Extract required information from state
-        openai_client = state.get("openai_client")
-        document_content = state.get("document_content", "")
-        
-        if not openai_client:
-            raise ValueError("OpenAI client not available in state")
-        
-        if not document_content:
-            logger.warning("No document content provided for novelty analysis")
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Extract required information from state
+            openai_client = state.get("openai_client")
+            document_content = state.get("document_content", "")
+            
+            if not openai_client:
+                raise ValueError("OpenAI client not available in state")
+            
+            if not document_content:
+                logger.warning("No document content provided for novelty improvement")
+                return {
+                    "improved_documents": [{"agent": "novelty", "content": ""}]
+                }
+            
+            # Create analysis context
+            context = AnalysisContext(
+                document_content=document_content,
+                document_id=state.get("document_id"),
+                version_number=state.get("version_number"),
+                user_input=state.get("user_input")
+            )
+            
+            # Create and run novelty agent
+            agent = await create_novelty_agent(openai_client)
+            improved_document = await agent.improve_document(context)
+            
+            logger.info(f"Novelty improvement completed: {len(improved_document)} characters")
+            
+            # Return improved document for parallel execution
             return {
-                "novelty_suggestions": []
+                "improved_documents": [{"agent": "novelty", "content": improved_document}]
             }
-        
-        # Create analysis context
-        context = AnalysisContext(
-            document_content=document_content,
-            document_id=state.get("document_id"),
-            version_number=state.get("version_number"),
-            user_input=state.get("user_input")
-        )
-        
-        # Create and run novelty agent
-        agent = await create_novelty_agent(openai_client)
-        result = await agent.analyze(context)
-        
-        logger.info(f"Novelty analysis completed: {len(result.suggestions)} suggestions")
-        
-        # Return only novelty suggestions for parallel execution
-        return {
-            "novelty_suggestions": result.suggestions
-        }
+            
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Novelty improvement failed (attempt {retry_count}/{max_retries}): {e}")
+            
+            if retry_count >= max_retries:
+                # Return original content on final failure
+                return {
+                    "improved_documents": [{"agent": "novelty", "content": state.get("document_content", "")}]
+                }
+            
+            # Wait briefly before retry
+            import asyncio
+            await asyncio.sleep(1)
         
     except Exception as e:
         logger.error(f"Novelty analysis node failed: {e}")

@@ -99,6 +99,93 @@ You will receive analysis results from Technical, Legal, and Novelty agents. You
         """
         raise NotImplementedError("Lead agent uses evaluate_agent_results method")
     
+    async def synthesize_improved_documents(self, improved_documents: List[Dict[str, str]], 
+                                          context: AnalysisContext) -> str:
+        """
+        Synthesize improved documents from all specialized agents into a final version.
+        
+        Args:
+            improved_documents: List of improved documents from agents
+            context: Analysis context
+            
+        Returns:
+            Final synthesized improved document
+        """
+        try:
+            logger.info("Starting lead agent document synthesis")
+            
+            if not improved_documents:
+                logger.warning("No improved documents to synthesize")
+                return context.document_content
+            
+            # Create synthesis prompt
+            synthesis_prompt = self._create_synthesis_prompt(improved_documents, context)
+            
+            # Prepare messages for synthesis
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": synthesis_prompt}
+            ]
+            
+            # Call OpenAI for final synthesis
+            response = await self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.1,  # Low temperature for consistent synthesis
+                max_tokens=5000
+            )
+            
+            final_document = response.choices[0].message.content.strip()
+            
+            logger.info(f"Lead synthesis completed: {len(final_document)} characters")
+            return final_document
+            
+        except Exception as e:
+            logger.error(f"Document synthesis failed: {e}")
+            # Return the best available document or original
+            if improved_documents:
+                return improved_documents[0].get("content", context.document_content)
+            return context.document_content
+    
+    def _create_synthesis_prompt(self, improved_documents: List[Dict[str, str]], 
+                               context: AnalysisContext) -> str:
+        """
+        Create synthesis prompt for combining improved documents.
+        """
+        prompt_parts = [
+            "You are synthesizing improved patent document versions from multiple specialized agents.",
+            "Your task is to create the BEST FINAL VERSION by combining the improvements from all agents.",
+            "",
+            "ORIGINAL DOCUMENT:",
+            context.document_content,
+            "",
+            "IMPROVED VERSIONS:",
+        ]
+        
+        for doc in improved_documents:
+            agent = doc.get("agent", "unknown")
+            content = doc.get("content", "")
+            prompt_parts.extend([
+                f"",
+                f"=== {agent.upper()} AGENT VERSION ===",
+                content,
+                ""
+            ])
+        
+        prompt_parts.extend([
+            "SYNTHESIS INSTRUCTIONS:",
+            "1. Take the BEST improvements from each agent version",
+            "2. Ensure technical accuracy (from technical agent)",
+            "3. Maintain legal compliance (from legal agent)",
+            "4. Emphasize novelty and innovation (from novelty agent)",
+            "5. Create a coherent, well-structured final document",
+            "6. Each paragraph should be separated by a single newline (\\n)",
+            "",
+            "Return ONLY the final synthesized document text with no explanations."
+        ])
+        
+        return "\n".join(prompt_parts)
+    
     async def evaluate_agent_results(self, agent_results: Dict[str, AnalysisResult], 
                                    context: AnalysisContext) -> AnalysisResult:
         """
@@ -543,56 +630,23 @@ async def create_lead_agent(openai_client: AsyncOpenAI) -> LeadAgent:
 # Node function for LangGraph integration
 async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    LangGraph node function for lead agent evaluation.
+    LangGraph node function for lead agent document synthesis.
     
     Args:
-        state: Current workflow state containing all agent results
+        state: Current workflow state containing improved documents from agents
         
     Returns:
-        Updated state with final synthesized recommendations
+        Updated state with final synthesized document
     """
     try:
-        # Get all suggestions directly from aggregator
-        all_suggestions = state.get("all_suggestions", [])
-        technical_suggestions = state.get("technical_suggestions", [])
-        legal_suggestions = state.get("legal_suggestions", [])
-        novelty_suggestions = state.get("novelty_suggestions", [])
+        # Get improved documents from all agents
+        improved_documents = state.get("improved_documents", [])
         
-        # Create agent results from aggregated suggestions
-        agent_results = {}
-        
-        if technical_suggestions:
-            agent_results["technical"] = AnalysisResult(
-                agent_type="technical",
-                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in technical_suggestions],
-                processing_time=0.0,
-                confidence=0.8
-            )
-            
-        if legal_suggestions:
-            agent_results["legal"] = AnalysisResult(
-                agent_type="legal",
-                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in legal_suggestions],
-                processing_time=0.0,
-                confidence=0.8
-            )
-            
-        if novelty_suggestions:
-            agent_results["novelty"] = AnalysisResult(
-                agent_type="novelty",
-                suggestions=[Suggestion.from_dict(s) if isinstance(s, dict) else s for s in novelty_suggestions],
-                processing_time=0.0,
-                confidence=0.8
-            )
-        
-        if not agent_results:
-            logger.warning("No agent results available for lead evaluation")
+        if not improved_documents:
+            logger.warning("No improved documents available for synthesis")
             return {
-                "final_analysis": {
-                    "agent_type": "lead",
-                    "suggestions": [],
-                    "error": "No agent results available"
-                }
+                "final_improved_document": state.get("document_content", ""),
+                "agents_used": ["lead"]
             }
         
         # Create analysis context
@@ -606,22 +660,24 @@ async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         # Create and run lead agent
         openai_client = state.get("openai_client")
         agent = await create_lead_agent(openai_client)
-        result = await agent.evaluate_agent_results(agent_results, context)
+        final_document = await agent.synthesize_improved_documents(improved_documents, context)
         
-        logger.info(f"Lead evaluation completed: {len(result.suggestions)} final suggestions")
+        # Get list of agents that contributed
+        contributing_agents = [doc.get("agent", "unknown") for doc in improved_documents]
+        agents_used = list(set(contributing_agents)) + ["lead"]
         
-        # Return only the keys this node updates
+        logger.info(f"Lead synthesis completed: {len(final_document)} characters from {len(contributing_agents)} agents")
+        
+        # Return synthesized document
         return {
-            "final_analysis": result.to_dict(),
-            "agents_used": list(agent_results.keys()) + ["lead"]
+            "final_improved_document": final_document,
+            "agents_used": agents_used
         }
         
     except Exception as e:
-        logger.error(f"Lead evaluation node failed: {e}")
+        logger.error(f"Lead synthesis node failed: {e}")
         return {
-            "final_analysis": {
-                "agent_type": "lead",
-                "suggestions": [],
-                "error": str(e)
-            }
+            "final_improved_document": state.get("document_content", ""),
+            "agents_used": ["lead"],
+            "error": str(e)
         }

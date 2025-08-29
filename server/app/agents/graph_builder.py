@@ -19,8 +19,10 @@ from .technical_agent import technical_analysis_node
 from .legal_agent import legal_analysis_node
 from .novelty_agent import novelty_analysis_node
 from .lead_agent import lead_evaluation_node
+from .mapping_agent import mapping_analysis_node
 from ..internal.mermaid_render import generate_mermaid_node
-from ..internal.text_utils import html_to_plain_text
+from ..internal.text_utils import html_to_plain_text, create_chunks_from_text, convert_chunks_to_full_text
+from ..internal.suggestion_generator import generate_suggestions_from_chunk_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,12 @@ class ChatWorkflowState(TypedDict):
     agents_used: Annotated[list, operator.add]
     errors: Annotated[list, operator.add]
     chat_history: Annotated[list, operator.add]
+    
+    # New chunking fields
+    original_chunks: Optional[list]
+    improved_documents: Annotated[list, operator.add]
+    final_improved_document: Optional[str]
+    chunk_mapping: Optional[Dict[str, Any]]
     
     # Optional workflow fields
     intent_confidence: Optional[str]
@@ -84,6 +92,7 @@ def create_chat_workflow() -> StateGraph:
     workflow.add_node("novelty_agent", novelty_analysis_node)
     workflow.add_node("suggestions_aggregator", aggregate_suggestions_node)
     workflow.add_node("lead_agent", lead_evaluation_node)
+    workflow.add_node("mapping_agent", mapping_analysis_node)
     workflow.add_node("response_formatter", format_final_response_node)
     
     # Set entry point
@@ -116,8 +125,11 @@ def create_chat_workflow() -> StateGraph:
     # Aggregator feeds into lead agent
     workflow.add_edge("suggestions_aggregator", "lead_agent")
     
-    # Lead agent feeds into response formatter
-    workflow.add_edge("lead_agent", "response_formatter")
+    # Lead agent feeds into mapping agent
+    workflow.add_edge("lead_agent", "mapping_agent")
+    
+    # Mapping agent feeds into response formatter  
+    workflow.add_edge("mapping_agent", "response_formatter")
     
     # Terminal nodes
     workflow.add_edge("casual_responder", END)
@@ -197,13 +209,37 @@ async def load_document_context_node(state: ChatWorkflowState) -> ChatWorkflowSt
                 "error": f"Failed to process document content: {str(e)}"
             }
         
-        # Update state with processed document
+        # Create chunks from plain text
+        try:
+            original_chunks = create_chunks_from_text(plain_text)
+            if not original_chunks:
+                return {
+                    **state,
+                    "document_processed": False,
+                    "error": "Failed to create chunks from document"
+                }
+            
+            # Convert chunks to agent-friendly format (single newlines)
+            agent_text = convert_chunks_to_full_text(original_chunks)
+            
+            logger.info(f"Created {len(original_chunks)} chunks for agent processing")
+            
+        except Exception as e:
+            logger.error(f"Failed to chunk document: {e}")
+            return {
+                **state,
+                "document_processed": False,
+                "error": f"Failed to chunk document: {str(e)}"
+            }
+        
+        # Update state with processed document and chunks
         updated_state = {
             **state,
-            "document_content": plain_text,  # Use plain text for analysis
+            "document_content": agent_text,  # Use agent-friendly format for analysis
+            "original_chunks": [chunk.to_dict() for chunk in original_chunks],  # Store original chunks
             "document_processed": True,
-            "content_length": len(plain_text),
-            "estimated_paragraphs": len([p for p in plain_text.split('\n') if p.strip()])
+            "content_length": len(agent_text),
+            "estimated_paragraphs": len(original_chunks)
         }
         
         logger.info(f"Document context loaded: {len(plain_text)} characters, "
@@ -340,47 +376,50 @@ async def recruit_agents_node(state: ChatWorkflowState) -> ChatWorkflowState:
 
 async def aggregate_suggestions_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Aggregate suggestions from all parallel agents.
+    Aggregate improved documents from all parallel agents.
     
-    This node collects results from technical, legal, and novelty agents
-    that run in parallel and combines them into a single list.
+    This node collects improved documents from technical, legal, and novelty agents
+    that run in parallel and prepares them for lead agent synthesis.
     
     Args:
-        state: Current workflow state with agent-specific suggestion lists
+        state: Current workflow state with agent improved documents
         
     Returns:
-        Updated state with aggregated suggestions
+        Updated state with aggregated improved documents
     """
     try:
-        logger.info("Aggregating suggestions from parallel agents")
+        logger.info("Aggregating improved documents from parallel agents")
         
-        all_suggestions = []
+        # The improved_documents field is automatically aggregated by LangGraph
+        # because it has the operator.add annotation in ChatWorkflowState
+        improved_documents = state.get("improved_documents", [])
         
-        # Collect from each agent's specific key
-        if state.get("technical_suggestions"):
-            all_suggestions.extend(state["technical_suggestions"])
-            logger.info(f"Added {len(state['technical_suggestions'])} technical suggestions")
+        # Ensure we have the expected agent contributions
+        agent_names = {doc.get("agent", "unknown") for doc in improved_documents}
+        expected_agents = {"technical", "legal", "novelty"}
         
-        if state.get("legal_suggestions"):
-            all_suggestions.extend(state["legal_suggestions"])
-            logger.info(f"Added {len(state['legal_suggestions'])} legal suggestions")
+        logger.info(f"Received improved documents from agents: {list(agent_names)}")
+        logger.info(f"Expected agents: {list(expected_agents)}")
         
-        if state.get("novelty_suggestions"):
-            all_suggestions.extend(state["novelty_suggestions"])
-            logger.info(f"Added {len(state['novelty_suggestions'])} novelty suggestions")
+        # Check if all expected agents contributed
+        if not expected_agents.issubset(agent_names):
+            missing_agents = expected_agents - agent_names
+            logger.warning(f"Missing improved documents from agents: {list(missing_agents)}")
         
-        logger.info(f"Aggregated {len(all_suggestions)} total suggestions from agents")
+        logger.info(f"Aggregated {len(improved_documents)} improved documents from agents")
         
-        # Return only the keys this node updates
+        # Return empty dict since improved_documents is automatically aggregated
+        # Just ensure agents_used is updated
+        contributing_agents = list(agent_names) if agent_names else ["technical", "legal", "novelty"]
+        
         return {
-            "all_suggestions": all_suggestions,
-            "agents_used": ["technical", "legal", "novelty"]
+            "agents_used": contributing_agents
         }
         
     except Exception as e:
         logger.error(f"Error aggregating suggestions: {e}")
         return {
-            "all_suggestions": [],
+            "agents_used": [],
             "error": str(e)
         }
 
@@ -398,21 +437,32 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
     try:
         logger.info("Formatting final response")
         
-        # Get analysis results
-        final_analysis = state.get("final_analysis", {})
+        # Get chunk mapping and generate suggestions
+        chunk_mapping = state.get("chunk_mapping", {})
+        original_chunks = state.get("original_chunks", [])
+        final_improved_document = state.get("final_improved_document", "")
         agents_used = state.get("agents_used", [])
         
-        if final_analysis.get("error"):
-            return {
-                "messages": [{
-                    "type": "text",
-                    "content": f"I encountered an issue while analyzing your document: {final_analysis['error']}. Please try again or check your document content.",
-                    "timestamp": "2024-01-01T00:00:00Z"
-                }],
-                "intent": "document_analysis"
-            }
-        
-        suggestions = final_analysis.get("suggestions", [])
+        # Generate suggestions from chunk mapping
+        suggestions = []
+        if chunk_mapping and original_chunks and final_improved_document:
+            try:
+                # Create chunks from final improved document
+                suggested_chunks_objects = create_chunks_from_text(final_improved_document)
+                suggested_chunks = [chunk.to_dict() for chunk in suggested_chunks_objects]
+                
+                # Generate suggestion cards
+                suggestions = generate_suggestions_from_chunk_mapping(
+                    chunk_mapping, original_chunks, suggested_chunks
+                )
+                
+                logger.info(f"Generated {len(suggestions)} suggestion cards from chunk mapping")
+                
+            except Exception as e:
+                logger.error(f"Failed to generate suggestions from chunk mapping: {e}")
+                suggestions = []
+        else:
+            logger.warning("Missing chunk mapping data for suggestion generation")
         
         if not suggestions:
             return {

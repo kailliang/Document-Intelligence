@@ -12,7 +12,8 @@ from bs4 import BeautifulSoup
 import re
 import logging
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from .chunk_manager import DocumentChunk, create_chunk_manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -348,6 +349,47 @@ class StreamingJSONParser:
         return f"Buffer length: {len(self.buffer)}, reset count: {self.reset_count}"
 
 
+def create_chunks_from_text(text: str) -> List[DocumentChunk]:
+    """
+    Create document chunks from plain text.
+    
+    Args:
+        text: Plain text document
+        
+    Returns:
+        List of DocumentChunk objects
+    """
+    chunk_manager = create_chunk_manager()
+    return chunk_manager.split_document_into_chunks(text)
+
+
+def reconstruct_text_from_chunks(chunks: List[DocumentChunk]) -> str:
+    """
+    Reconstruct document text from chunks.
+    
+    Args:
+        chunks: List of DocumentChunk objects
+        
+    Returns:
+        Reconstructed document text
+    """
+    chunk_manager = create_chunk_manager()
+    return chunk_manager.reconstruct_document_from_chunks(chunks)
+
+
+def convert_chunks_to_full_text(chunks: List[DocumentChunk]) -> str:
+    """
+    Convert chunks to full text with paragraph separators for agent processing.
+    
+    Args:
+        chunks: List of DocumentChunk objects
+        
+    Returns:
+        Full text with \n separators between paragraphs
+    """
+    return "\n".join(chunk.text for chunk in chunks)
+
+
 def test_streaming_json_parser():
     """
     Test streaming JSON parser
@@ -395,7 +437,40 @@ def test_streaming_json_parser():
         print("  ❌ Final parsing failed")
 
 
+def test_chunking_operations():
+    """
+    Test document chunking operations
+    """
+    print("\n🧪 Testing document chunking...")
+    
+    test_document = """This is the first paragraph of a patent document.
+It describes the technical field of the invention.
+
+This is the second paragraph.
+It provides background information about existing solutions.
+
+This is the third paragraph containing claims.
+Claim 1: A system comprising a processor and memory."""
+    
+    # Test chunking
+    chunks = create_chunks_from_text(test_document)
+    print(f"Created {len(chunks)} chunks:")
+    for chunk in chunks:
+        print(f"  {chunk.chunk_id}: {chunk.text[:50]}...")
+    
+    # Test reconstruction
+    reconstructed = reconstruct_text_from_chunks(chunks)
+    success = reconstructed.strip() == test_document.strip()
+    print(f"Reconstruction test: {'✅' if success else '❌'}")
+    
+    # Test conversion to agent format
+    agent_text = convert_chunks_to_full_text(chunks)
+    print(f"Agent format text length: {len(agent_text)}")
+    print(f"Paragraph count: {agent_text.count(chr(10)) + 1}")
+
+
 if __name__ == "__main__":
     # Run tests
     test_html_conversion()
     test_streaming_json_parser()
+    test_chunking_operations()
