@@ -185,7 +185,7 @@ export default function ChatPanel({
     ],
     mermaid_diagram: [
       { id: "intent_detection", name: "Request Analysis", message: "Understanding diagram requirements...", progress: 25, status: 'pending' as const, agent: "system" },
-      { id: "agent_selection", name: "Diagram Setup", message: "Preparing diagram generator...", progress: 50, status: 'pending' as const, agent: "system" },
+      { id: "agent_selection", name: "Diagram Setup", message: "Preparing diagram generator...", progress: 75, status: 'pending' as const, agent: "system" },
       { id: "diagram_generation", name: "Creating Diagram", message: "Generating Mermaid diagram...", progress: 90, status: 'pending' as const, agent: "system" }
     ]
   };

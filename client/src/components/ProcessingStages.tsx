@@ -64,7 +64,7 @@ export default function ProcessingStages({
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900">{currentStage.name}</h3>
+            <div className="text-sm font-medium text-gray-900" style={{fontSize: '16px'}}>{currentStage.name}</div>
             <span className="text-xs text-gray-500">{Math.round(currentStage.progress)}%</span>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function ProcessingStages({
               }`}
             >
               <span className="text-xs">{statusIcon}</span>
-              <span className={`text-xs font-medium ${statusColor} flex-1`}>
+              <span className={`text-sm font-medium ${statusColor} flex-1`}>
                 {stage.name}
               </span>
               {stage.status === 'active' && (

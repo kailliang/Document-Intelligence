@@ -37,7 +37,7 @@ INTENT_STAGE_MAPPINGS = {
     ],
     "mermaid_diagram": [
         {"id": "intent_detection", "name": "Request Analysis", "message": "Understanding diagram requirements...", "progress": 25, "agent": "system"},
-        {"id": "agent_selection", "name": "Diagram Setup", "message": "Preparing diagram generator...", "progress": 50, "agent": "system"},
+        {"id": "agent_selection", "name": "Diagram Setup", "message": "Preparing diagram generator...", "progress": 75, "agent": "system"},
         {"id": "diagram_generation", "name": "Creating Diagram", "message": "Generating Mermaid diagram...", "progress": 90, "agent": "system"}
     ]
 }
