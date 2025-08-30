@@ -150,11 +150,6 @@ class BaseAgent(ABC):
         """Return the system prompt for this agent"""
         pass
     
-    @property
-    @abstractmethod
-    def function_tools(self) -> List[Dict[str, Any]]:
-        """Return the OpenAI function tools for this agent"""
-        pass
     
     async def analyze(self, context: AnalysisContext) -> AnalysisResult:
         """

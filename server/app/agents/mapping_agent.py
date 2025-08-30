@@ -96,10 +96,6 @@ Return ONLY a valid JSON object in this exact format (NO markdown formatting):
 }
 """
     
-    @property
-    def function_tools(self) -> List[Dict[str, Any]]:
-        # No function tools needed - agent returns JSON directly
-        return []
     
     async def create_chunk_mapping(self, original_chunks: List[Dict[str, Any]], 
                                   suggested_chunks: List[Dict[str, Any]],

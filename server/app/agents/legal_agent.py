@@ -100,10 +100,6 @@ Return the complete improved document text with each paragraph separated by \\n.
 Document to improve:
 """
     
-    @property
-    def function_tools(self) -> List[Dict[str, Any]]:
-        # No function tools needed - agent returns improved text directly
-        return []
     
     async def improve_document(self, context: AnalysisContext) -> str:
         """
