@@ -129,8 +129,14 @@ class BaseAgent(ABC):
     
     def __init__(self, openai_client: AsyncOpenAI, agent_type: AgentType):
         self.client = openai_client
+        self.openai_client = openai_client  # For backward compatibility
         self.agent_type = agent_type
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    
+    @property
+    def model(self) -> str:
+        """Return the OpenAI model to use"""
+        return os.getenv("OPENAI_MODEL", "gpt-4.1")
     
     @property
     @abstractmethod

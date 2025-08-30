@@ -46,13 +46,11 @@ Compare original document chunks with improved document chunks and create a JSON
 
 1. **Chunk Relationships**
    - Which suggested chunks correspond to which original chunks
-   - Handle one-to-one, many-to-one, and one-to-many relationships
-   - Identify merged or split paragraphs
+   - One original chunk can have one, multiple, or zero corresponding suggested chunks
 
 2. **Change Analysis**
    - Assess the significance of changes between chunks
    - Identify technical improvements, legal compliance fixes, and novelty enhancements
-   - Evaluate the impact of modifications
 
 3. **Severity Assessment**
    - **High**: Major structural changes, legal compliance fixes, critical technical corrections
@@ -60,45 +58,42 @@ Compare original document chunks with improved document chunks and create a JSON
    - **Low**: Minor refinements, formatting improvements, stylistic changes
 
 4. **Confidence Scoring**
-   - **0.9-1.0**: Very clear mapping with obvious chunk relationships
-   - **0.7-0.8**: Clear mapping with minor ambiguity
-   - **0.5-0.6**: Reasonable mapping with some uncertainty
-   - **0.3-0.4**: Uncertain mapping requiring manual review
-   - **0.1-0.2**: Poor mapping quality
+   - **0.9-1.0**: Very confident in the suggested improvements
+   - **0.7-0.8**: Confident with minor uncertainty
+   - **0.4-0.6**: Moderately confident in suggestions
+   - **0.1-0.3**: Low confidence, suggestions may need review
 
 **Response Format:**
-Return ONLY a valid JSON object in this exact format:
-```json
+Return ONLY a valid JSON object in this exact format (NO markdown formatting):
+
 {
-  "suggested_chunk_id": {
-    "original_chunks": ["original_chunk_id1", "original_chunk_id2"],
+  "original_chunk_id1": {
+    "suggested_chunks": ["suggested_chunk_id1", "suggested_chunk_id2"],
     "severity": "high|medium|low",
     "confidence": 0.85,
     "change_type": "technical|legal|novelty|combined",
-    "description": "Brief description of the change"
+    "description": "Brief description of the change with no more than 30 words"
   }
 }
-```
 
 **Important:**
-- Each suggested chunk must have exactly one mapping entry
-- Original chunks can be referenced by multiple suggested chunks
-- Severity and confidence must reflect actual change significance
+- Each original chunk must have exactly one output mapping
+- Only select chunk IDs provided, do NOT create new chunk IDs
+- Severity must reflect actual change significance
 - Change type should indicate the primary improvement category
-- Description should be concise (max 100 characters)
+- Confidence reflects how confident you are in the suggested improvements
+- Return raw JSON only, do NOT wrap in markdown code blocks
 
 **Example Mapping:**
-```json
 {
-  "chunk_001_abc123": {
-    "original_chunks": ["chunk_000_def456"],
+  "chunk_000_abc123": {
+    "suggested_chunks": ["chunk_001_def456", "chunk_002_ghi789"],
     "severity": "high", 
     "confidence": 0.92,
     "change_type": "technical",
-    "description": "Added missing colon and fixed claim structure"
+    "description": "Split original claim into two separate claims with added technical details"
   }
 }
-```
 """
     
     @property
@@ -161,6 +156,18 @@ Return ONLY a valid JSON object in this exact format:
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse mapping JSON: {e}")
                 logger.debug(f"Raw response: {mapping_response}")
+                
+                # Try to extract JSON from markdown if direct parsing failed
+                extracted_json = self._extract_json_from_markdown(mapping_response)
+                if extracted_json:
+                    try:
+                        chunk_mapping = json.loads(extracted_json)
+                        if self._validate_mapping(chunk_mapping, original_chunks, suggested_chunks):
+                            logger.info(f"Successfully extracted JSON from markdown: {len(chunk_mapping)} mappings")
+                            return chunk_mapping
+                    except json.JSONDecodeError:
+                        logger.error("Extracted JSON is still invalid")
+                
                 return self._create_fallback_mapping(original_chunks, suggested_chunks)
             
         except Exception as e:
@@ -180,7 +187,7 @@ Return ONLY a valid JSON object in this exact format:
         
         for chunk in original_chunks:
             chunk_id = chunk.get("chunk_id", "unknown")
-            text = chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", "")
+            text = chunk.get("text", "")[:1000] + "..." if len(chunk.get("text", "")) > 1000 else chunk.get("text", "")
             prompt_parts.append(f"ID: {chunk_id}")
             prompt_parts.append(f"Text: {text}")
             prompt_parts.append("")
@@ -191,7 +198,7 @@ Return ONLY a valid JSON object in this exact format:
         
         for chunk in suggested_chunks:
             chunk_id = chunk.get("chunk_id", "unknown")
-            text = chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", "")
+            text = chunk.get("text", "")[:1000] + "..." if len(chunk.get("text", "")) > 1000 else chunk.get("text", "")
             prompt_parts.append(f"ID: {chunk_id}")
             prompt_parts.append(f"Text: {text}")
             prompt_parts.append("")
@@ -209,44 +216,46 @@ Return ONLY a valid JSON object in this exact format:
                          suggested_chunks: List[Dict[str, Any]]) -> bool:
         """
         Validate the structure of the chunk mapping.
+        
+        New format expects original chunk IDs as keys mapping to suggested chunks.
         """
         try:
             # Get chunk IDs for validation
             original_ids = {chunk.get("chunk_id") for chunk in original_chunks}
             suggested_ids = {chunk.get("chunk_id") for chunk in suggested_chunks}
             
-            for suggested_id, mapping_data in mapping.items():
-                # Check if suggested chunk ID exists
-                if suggested_id not in suggested_ids:
-                    logger.warning(f"Invalid suggested chunk ID in mapping: {suggested_id}")
+            for original_id, mapping_data in mapping.items():
+                # Check if original chunk ID exists
+                if original_id not in original_ids:
+                    logger.warning(f"Invalid original chunk ID in mapping: {original_id}")
                     return False
                 
                 # Check required fields
-                required_fields = ["original_chunks", "severity", "confidence", "change_type", "description"]
+                required_fields = ["suggested_chunks", "severity", "confidence", "change_type", "description"]
                 if not all(field in mapping_data for field in required_fields):
-                    logger.warning(f"Missing required fields in mapping for {suggested_id}")
+                    logger.warning(f"Missing required fields in mapping for {original_id}")
                     return False
                 
-                # Validate original chunk references
-                original_chunk_refs = mapping_data.get("original_chunks", [])
-                if not isinstance(original_chunk_refs, list):
-                    logger.warning(f"Invalid original_chunks format for {suggested_id}")
+                # Validate suggested chunk references
+                suggested_chunk_refs = mapping_data.get("suggested_chunks", [])
+                if not isinstance(suggested_chunk_refs, list):
+                    logger.warning(f"Invalid suggested_chunks format for {original_id}")
                     return False
                 
-                for orig_id in original_chunk_refs:
-                    if orig_id not in original_ids:
-                        logger.warning(f"Invalid original chunk reference: {orig_id}")
+                for sugg_id in suggested_chunk_refs:
+                    if sugg_id not in suggested_ids:
+                        logger.warning(f"Invalid suggested chunk reference: {sugg_id}")
                         return False
                 
                 # Validate severity
                 if mapping_data.get("severity") not in ["high", "medium", "low"]:
-                    logger.warning(f"Invalid severity for {suggested_id}")
+                    logger.warning(f"Invalid severity for {original_id}")
                     return False
                 
                 # Validate confidence
                 confidence = mapping_data.get("confidence")
                 if not isinstance(confidence, (int, float)) or not (0 <= confidence <= 1):
-                    logger.warning(f"Invalid confidence for {suggested_id}")
+                    logger.warning(f"Invalid confidence for {original_id}")
                     return False
             
             return True
@@ -255,32 +264,79 @@ Return ONLY a valid JSON object in this exact format:
             logger.error(f"Mapping validation failed: {e}")
             return False
     
+    def _extract_json_from_markdown(self, text: str) -> Optional[str]:
+        """
+        Extract JSON content from markdown code blocks.
+        
+        Args:
+            text: Text that may contain JSON wrapped in markdown
+            
+        Returns:
+            Extracted JSON string or None if not found
+        """
+        import re
+        
+        # Look for JSON wrapped in markdown code blocks
+        patterns = [
+            r'```json\s*\n(.*?)\n```',  # ```json\n{...}\n```
+            r'```\s*\n(.*?)\n```',     # ```\n{...}\n```
+            r'`([^`]*{[^`]*}[^`]*)`',  # `{...}`
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                extracted = match.group(1).strip()
+                # Check if it looks like JSON (starts with { and ends with })
+                if extracted.startswith('{') and extracted.endswith('}'):
+                    return extracted
+        
+        return None
+    
     def _create_fallback_mapping(self, original_chunks: List[Dict[str, Any]], 
                                suggested_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Create a simple position-based fallback mapping if AI mapping fails.
+        
+        New format: original chunk IDs as keys mapping to suggested chunks.
         """
         logger.info("Creating fallback chunk mapping")
+        logger.debug(f"Fallback input - Original chunks: {len(original_chunks)}, Suggested chunks: {len(suggested_chunks)}")
         
         fallback_mapping = {}
         
-        for i, suggested_chunk in enumerate(suggested_chunks):
-            suggested_id = suggested_chunk.get("chunk_id", f"suggested_{i}")
+        # Create mapping from each original chunk to corresponding suggested chunks
+        for i, original_chunk in enumerate(original_chunks):
+            original_id = original_chunk.get("chunk_id", f"original_{i}")
             
-            # Map to corresponding original chunk by position
-            if i < len(original_chunks):
-                original_id = original_chunks[i].get("chunk_id", f"original_{i}")
-            else:
-                # If more suggested chunks than original, map to last original
-                original_id = original_chunks[-1].get("chunk_id", "original_last")
+            # Map to corresponding suggested chunks by position
+            # If fewer suggested chunks than original, some original chunks may map to empty arrays
+            suggested_chunk_ids = []
             
-            fallback_mapping[suggested_id] = {
-                "original_chunks": [original_id],
+            # Simple 1-to-1 mapping by position, or 1-to-many if more suggested chunks
+            if i < len(suggested_chunks):
+                suggested_id = suggested_chunks[i].get("chunk_id", f"suggested_{i}")
+                suggested_chunk_ids.append(suggested_id)
+            
+            # If there are more suggested chunks than original chunks, 
+            # distribute extra suggested chunks among original chunks
+            extra_suggested_start = len(original_chunks)
+            if i == 0 and len(suggested_chunks) > len(original_chunks):
+                # Add extra suggested chunks to the first original chunk
+                for j in range(extra_suggested_start, len(suggested_chunks)):
+                    extra_suggested_id = suggested_chunks[j].get("chunk_id", f"suggested_{j}")
+                    suggested_chunk_ids.append(extra_suggested_id)
+            
+            fallback_mapping[original_id] = {
+                "suggested_chunks": suggested_chunk_ids,
                 "severity": "medium",  # Default severity
                 "confidence": 0.6,     # Moderate confidence for fallback
                 "change_type": "combined",
                 "description": "Automated fallback mapping"
             }
+            
+            if i < 3:  # Log first few for debugging
+                logger.debug(f"Fallback mapping {i}: {original_id} -> {suggested_chunk_ids}")
         
         logger.info(f"Fallback mapping created: {len(fallback_mapping)} mappings")
         return fallback_mapping
@@ -357,9 +413,10 @@ async def mapping_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"Chunk mapping completed: {len(chunk_mapping)} mappings created")
         
-        # Return chunk mapping for suggestion generation
+        # Return chunk mapping AND suggested chunks to maintain ID consistency
         return {
-            "chunk_mapping": chunk_mapping
+            "chunk_mapping": chunk_mapping,
+            "suggested_chunks": suggested_chunks  # Store chunks to avoid recreating with new IDs
         }
         
     except Exception as e:

@@ -447,6 +447,10 @@ async def novelty_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
     
     while retry_count < max_retries:
         try:
+            # Send progress update
+            if state.get("progress_callback"):
+                await state["progress_callback"]("novelty_analysis", "novelty", state.get("intent", "document_analysis"))
+            
             # Extract required information from state
             openai_client = state.get("openai_client")
             document_content = state.get("document_content", "")

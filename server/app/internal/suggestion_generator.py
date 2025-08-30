@@ -37,6 +37,8 @@ class SuggestionGenerator:
         """
         Generate suggestion cards from chunk mapping.
         
+        New format: chunk_mapping has original chunk IDs as keys mapping to suggested chunks.
+        
         Args:
             chunk_mapping: Mapping from mapping agent with severity/confidence
             original_chunks: Original document chunks
@@ -55,28 +57,40 @@ class SuggestionGenerator:
         original_chunks_dict = {chunk.get("chunk_id"): chunk for chunk in original_chunks}
         suggested_chunks_dict = {chunk.get("chunk_id"): chunk for chunk in suggested_chunks}
         
+        self.logger.debug(f"Original chunk IDs: {list(original_chunks_dict.keys())}")
+        self.logger.debug(f"Suggested chunk IDs: {list(suggested_chunks_dict.keys())}")
+        self.logger.debug(f"Mapping original chunk IDs: {list(chunk_mapping.keys())}")
+        
         suggestions = []
         
-        for suggested_chunk_id, mapping_data in chunk_mapping.items():
+        # Iterate over original chunks and their mapped suggested chunks
+        for original_chunk_id, mapping_data in chunk_mapping.items():
             try:
-                suggestion = self._create_suggestion_from_mapping(
-                    suggested_chunk_id=suggested_chunk_id,
-                    mapping_data=mapping_data,
-                    original_chunks_dict=original_chunks_dict,
-                    suggested_chunks_dict=suggested_chunks_dict
-                )
+                # Get the suggested chunks for this original chunk
+                suggested_chunk_ids = mapping_data.get("suggested_chunks", [])
                 
-                if suggestion:
-                    suggestions.append(suggestion)
+                # Create a suggestion card for each suggested chunk
+                for suggested_chunk_id in suggested_chunk_ids:
+                    suggestion = self._create_suggestion_from_mapping(
+                        original_chunk_id=original_chunk_id,
+                        suggested_chunk_id=suggested_chunk_id,
+                        mapping_data=mapping_data,
+                        original_chunks_dict=original_chunks_dict,
+                        suggested_chunks_dict=suggested_chunks_dict
+                    )
+                    
+                    if suggestion:
+                        suggestions.append(suggestion)
                     
             except Exception as e:
-                self.logger.error(f"Failed to create suggestion for chunk {suggested_chunk_id}: {e}")
+                self.logger.error(f"Failed to create suggestions for original chunk {original_chunk_id}: {e}")
                 continue
         
         self.logger.info(f"Generated {len(suggestions)} unique suggestion cards")
         return suggestions
     
     def _create_suggestion_from_mapping(self,
+                                      original_chunk_id: str,
                                       suggested_chunk_id: str,
                                       mapping_data: Dict[str, Any],
                                       original_chunks_dict: Dict[str, Dict[str, Any]],
@@ -85,24 +99,16 @@ class SuggestionGenerator:
         Create a single suggestion card from mapping data.
         """
         try:
+            # Get original chunk
+            original_chunk = original_chunks_dict.get(original_chunk_id)
+            if not original_chunk:
+                self.logger.warning(f"Original chunk not found: {original_chunk_id}")
+                return None
+            
             # Get suggested chunk
             suggested_chunk = suggested_chunks_dict.get(suggested_chunk_id)
             if not suggested_chunk:
-                self.logger.warning(f"Suggested chunk not found: {suggested_chunk_id}")
-                return None
-            
-            # Get original chunks that this suggestion maps to
-            original_chunk_ids = mapping_data.get("original_chunks", [])
-            if not original_chunk_ids:
-                self.logger.warning(f"No original chunks mapped for {suggested_chunk_id}")
-                return None
-            
-            # Get the primary original chunk (first in list)
-            primary_original_id = original_chunk_ids[0]
-            original_chunk = original_chunks_dict.get(primary_original_id)
-            
-            if not original_chunk:
-                self.logger.warning(f"Original chunk not found: {primary_original_id}")
+                self.logger.warning(f"Suggested chunk not found: {suggested_chunk_id} (Available: {list(suggested_chunks_dict.keys())[:3]}...)")
                 return None
             
             # Extract text content
@@ -111,7 +117,7 @@ class SuggestionGenerator:
             
             # Skip if texts are identical (no actual change)
             if original_text == suggested_text:
-                self.logger.debug(f"Skipping identical chunks: {suggested_chunk_id}")
+                self.logger.debug(f"Skipping identical chunks: {original_chunk_id} -> {suggested_chunk_id}")
                 return None
             
             # Create suggestion card
@@ -129,8 +135,8 @@ class SuggestionGenerator:
                 
                 # Additional metadata for chunk-based suggestions
                 "chunk_mapping": {
+                    "original_chunk_id": original_chunk_id,
                     "suggested_chunk_id": suggested_chunk_id,
-                    "original_chunk_ids": original_chunk_ids,
                     "change_type": mapping_data.get("change_type", "combined")
                 }
             }

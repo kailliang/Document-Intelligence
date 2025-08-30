@@ -41,6 +41,7 @@ class ChatWorkflowState(TypedDict):
     version_number: Optional[str]
     openai_client: Any
     intent: Optional[str]
+    progress_callback: Optional[Any]  # Callback for progress updates
     
     # Fields that may be updated by parallel nodes (need reducers)
     technical_suggestions: Annotated[list, operator.add]
@@ -57,6 +58,7 @@ class ChatWorkflowState(TypedDict):
     improved_documents: Annotated[list, operator.add]
     final_improved_document: Optional[str]
     chunk_mapping: Optional[Dict[str, Any]]
+    suggested_chunks: Optional[list]  # Store chunks to maintain ID consistency
     
     # Optional workflow fields
     intent_confidence: Optional[str]
@@ -179,6 +181,10 @@ async def load_document_context_node(state: ChatWorkflowState) -> ChatWorkflowSt
         Updated state with document context
     """
     try:
+        # Send progress update
+        if state.get("progress_callback"):
+            await state["progress_callback"]("document_parsing", "system", state.get("intent", "document_analysis"))
+            
         logger.info("Loading document context")
         
         # Get document content from state
@@ -338,6 +344,10 @@ async def recruit_agents_node(state: ChatWorkflowState) -> ChatWorkflowState:
         Updated state with agent recruitment information
     """
     try:
+        # Send progress update
+        if state.get("progress_callback"):
+            await state["progress_callback"]("agent_selection", "lead", state.get("intent", "document_analysis"))
+            
         logger.info("Recruiting specialized agents for analysis")
         
         # Check if document is ready for analysis
@@ -435,6 +445,10 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
         Final state with formatted response messages
     """
     try:
+        # Send progress update for finalizing results
+        if state.get("progress_callback"):
+            await state["progress_callback"]("finalizing_results", "system", state.get("intent", "document_analysis"))
+            
         logger.info("Formatting final response")
         
         # Get chunk mapping and generate suggestions
@@ -445,11 +459,16 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
         
         # Generate suggestions from chunk mapping
         suggestions = []
-        if chunk_mapping and original_chunks and final_improved_document:
+        suggested_chunks = state.get("suggested_chunks", [])
+        
+        if chunk_mapping and original_chunks and suggested_chunks:
             try:
-                # Create chunks from final improved document
-                suggested_chunks_objects = create_chunks_from_text(final_improved_document)
-                suggested_chunks = [chunk.to_dict() for chunk in suggested_chunks_objects]
+                # Send progress update for generating suggestions
+                if state.get("progress_callback"):
+                    await state["progress_callback"]("generating_suggestions", "lead", state.get("intent", "document_analysis"))
+                
+                # Use stored suggested chunks to maintain ID consistency
+                logger.info(f"Using stored suggested chunks: {len(suggested_chunks)} chunks")
                 
                 # Generate suggestion cards
                 suggestions = generate_suggestions_from_chunk_mapping(
@@ -460,6 +479,23 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
                 
             except Exception as e:
                 logger.error(f"Failed to generate suggestions from chunk mapping: {e}")
+                suggestions = []
+        elif chunk_mapping and original_chunks and final_improved_document:
+            try:
+                # Fallback: create chunks if not stored (shouldn't happen normally)
+                logger.warning("Suggested chunks not found in state, recreating (may cause ID mismatch)")
+                suggested_chunks_objects = create_chunks_from_text(final_improved_document)
+                suggested_chunks = [chunk.to_dict() for chunk in suggested_chunks_objects]
+                
+                # Generate suggestion cards
+                suggestions = generate_suggestions_from_chunk_mapping(
+                    chunk_mapping, original_chunks, suggested_chunks
+                )
+                
+                logger.info(f"Generated {len(suggestions)} suggestion cards from chunk mapping (fallback)")
+                
+            except Exception as e:
+                logger.error(f"Failed to generate suggestions from chunk mapping (fallback): {e}")
                 suggestions = []
         else:
             logger.warning("Missing chunk mapping data for suggestion generation")
@@ -519,7 +555,8 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
 def create_initial_state(user_input: str, document_content: str = "",
                         document_id: Optional[int] = None,
                         version_number: Optional[str] = None,
-                        chat_history: Optional[list] = None) -> ChatWorkflowState:
+                        chat_history: Optional[list] = None,
+                        progress_callback: Optional[callable] = None) -> ChatWorkflowState:
     """
     Create initial state for the workflow that matches ChatWorkflowState structure.
     
@@ -545,6 +582,7 @@ def create_initial_state(user_input: str, document_content: str = "",
         "version_number": version_number,
         "openai_client": openai_client,
         "intent": None,
+        "progress_callback": progress_callback,
         
         # Fields with reducers (start as empty lists)
         "technical_suggestions": [],
@@ -573,7 +611,8 @@ def create_initial_state(user_input: str, document_content: str = "",
 async def execute_chat_workflow(user_input: str, document_content: str = "",
                                document_id: Optional[int] = None,
                                version_number: Optional[str] = None,
-                               chat_history: Optional[list] = None) -> Dict[str, Any]:
+                               chat_history: Optional[list] = None,
+                               progress_callback: Optional[callable] = None) -> Dict[str, Any]:
     """
     Execute the complete chat workflow.
     
@@ -583,6 +622,7 @@ async def execute_chat_workflow(user_input: str, document_content: str = "",
         document_id: Document ID
         version_number: Document version
         chat_history: Previous chat history
+        progress_callback: Optional callback for progress updates
         
     Returns:
         Workflow execution result
@@ -599,7 +639,8 @@ async def execute_chat_workflow(user_input: str, document_content: str = "",
             document_content=document_content,
             document_id=document_id,
             version_number=version_number,
-            chat_history=chat_history
+            chat_history=chat_history,
+            progress_callback=progress_callback
         )
         
         # Add debug logging

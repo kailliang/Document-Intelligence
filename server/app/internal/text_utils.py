@@ -49,8 +49,9 @@ def html_to_plain_text(html_content: str) -> str:
         
         # Simplified processing: maintain consistency with TipTap editor's getText() method
         # TipTap's getText() adds line breaks after each block-level element
+        # Use double newlines to ensure proper paragraph separation for chunk splitting
         for tag in soup.find_all(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']):
-            tag.insert_after('\n')
+            tag.insert_after('\n\n')
         
         # Get plain text content
         text = soup.get_text()

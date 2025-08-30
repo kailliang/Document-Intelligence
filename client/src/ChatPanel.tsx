@@ -386,8 +386,13 @@ export default function ChatPanel({
         // Handle individual processing stage updates
         const stageData = message;
         
-        // Use current stages (should be initialized in sendMessage)
-        const currentStageConfig = stageConfigurations[detectedIntent] || defaultStages;
+        // Update detected intent if provided by backend
+        if (stageData.intent_type) {
+          setDetectedIntent(stageData.intent_type);
+        }
+        
+        // Use current stages (should be initialized in sendMessage or from stage_list)
+        const currentStageConfig = stageConfigurations[stageData.intent_type || detectedIntent] || defaultStages;
         const updatedStages = allProcessingStages.length > 0 ? allProcessingStages : currentStageConfig;
         
         // Update stages with current stage status
@@ -410,6 +415,26 @@ export default function ChatPanel({
         
         setAllProcessingStages(newStages);
         setCurrentProcessingStage(newStages.find(s => s.id === stageData.stage) || null);
+        break;
+        
+      case 'stage_list':
+        // Handle dynamic stage list from backend based on detected intent
+        if (message.intent_type && message.stages) {
+          console.log(`📋 Received stage list for intent: ${message.intent_type}`);
+          setDetectedIntent(message.intent_type);
+          
+          // Convert backend stages to frontend format
+          const frontendStages = message.stages.map((stage: any) => ({
+            id: stage.id,
+            name: stage.name,
+            message: stage.message,
+            progress: stage.progress,
+            status: 'pending' as const,
+            agent: stage.agent || 'system'
+          }));
+          
+          setAllProcessingStages(frontendStages);
+        }
         break;
         
       case 'assistant_response':

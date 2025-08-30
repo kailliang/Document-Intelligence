@@ -18,21 +18,43 @@ from app.agents.graph_builder import execute_chat_workflow
 
 logger = logging.getLogger(__name__)
 
-# Processing stages configuration
-PROCESSING_STAGES = [
-    {"id": "intent_detection", "name": "Intent Detection", "message": "Analyzing your request...", "progress": 10},
-    {"id": "agent_selection", "name": "Agent Selection", "message": "Selecting appropriate AI agents...", "progress": 20},
-    {"id": "document_parsing", "name": "Document Parsing", "message": "Processing document content...", "progress": 30},
-    {"id": "legal_analysis", "name": "Legal Analysis", "message": "Legal agent investigating compliance...", "progress": 50},
-    {"id": "technical_analysis", "name": "Technical Analysis", "message": "Technical agent reviewing structure...", "progress": 70},
-    {"id": "generating_suggestions", "name": "Generating Suggestions", "message": "Preparing improvement suggestions...", "progress": 85},
-    {"id": "finalizing_results", "name": "Finalizing Results", "message": "Finalizing analysis results...", "progress": 95}
-]
+# Intent-specific processing stage configurations
+INTENT_STAGE_MAPPINGS = {
+    "casual_chat": [
+        {"id": "understanding", "name": "Understanding Query", "message": "Processing your question...", "progress": 30, "agent": "system"},
+        {"id": "generating_response", "name": "Generating Response", "message": "Preparing response...", "progress": 70, "agent": "assistant"},
+        {"id": "finalizing", "name": "Finalizing", "message": "Finalizing response...", "progress": 100, "agent": "system"}
+    ],
+    "document_analysis": [
+        {"id": "intent_detection", "name": "Intent Detection", "message": "Analyzing your request...", "progress": 10, "agent": "system"},
+        {"id": "agent_selection", "name": "Agent Selection", "message": "Selecting appropriate AI agents...", "progress": 20, "agent": "lead"},
+        {"id": "document_parsing", "name": "Document Parsing", "message": "Processing document content...", "progress": 30, "agent": "system"},
+        {"id": "legal_analysis", "name": "Legal Analysis", "message": "Legal agent investigating compliance...", "progress": 50, "agent": "legal"},
+        {"id": "technical_analysis", "name": "Technical Analysis", "message": "Technical agent reviewing structure...", "progress": 70, "agent": "technical"},
+        {"id": "novelty_analysis", "name": "Novelty Analysis", "message": "Novelty agent checking innovation...", "progress": 80, "agent": "novelty"},
+        {"id": "generating_suggestions", "name": "Generating Suggestions", "message": "Preparing improvement suggestions...", "progress": 90, "agent": "lead"},
+        {"id": "finalizing_results", "name": "Finalizing Results", "message": "Finalizing analysis results...", "progress": 100, "agent": "system"}
+    ],
+    "mermaid_diagram": [
+        {"id": "analyzing_content", "name": "Analyzing Content", "message": "Understanding document structure...", "progress": 20, "agent": "system"},
+        {"id": "extracting_structure", "name": "Extracting Structure", "message": "Identifying key relationships...", "progress": 40, "agent": "technical"},
+        {"id": "generating_diagram", "name": "Generating Diagram", "message": "Creating visual representation...", "progress": 70, "agent": "ai_enhanced"},
+        {"id": "rendering", "name": "Rendering Visualization", "message": "Preparing diagram display...", "progress": 90, "agent": "system"},
+        {"id": "complete", "name": "Complete", "message": "Diagram ready!", "progress": 100, "agent": "system"}
+    ]
+}
 
-async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str = "system", delay: float = 0.8):
+# Legacy processing stages (for backward compatibility)
+PROCESSING_STAGES = INTENT_STAGE_MAPPINGS["document_analysis"]
+
+async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str = "system", 
+                               delay: float = 0.8, intent_type: str = "document_analysis"):
     """Send a processing stage message to the client with optional delay"""
-    stage = next((s for s in PROCESSING_STAGES if s["id"] == stage_id), None)
+    # Get stages for the specific intent type
+    stages = INTENT_STAGE_MAPPINGS.get(intent_type, INTENT_STAGE_MAPPINGS["document_analysis"])
+    stage = next((s for s in stages if s["id"] == stage_id), None)
     if not stage:
+        logger.warning(f"Stage {stage_id} not found for intent {intent_type}")
         return
     
     # Add delay for realistic processing timing
@@ -45,7 +67,8 @@ async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str 
         "name": stage["name"],
         "message": stage["message"],
         "progress": stage["progress"],
-        "agent": agent,
+        "agent": stage.get("agent", agent),  # Use stage's agent or fallback
+        "intent_type": intent_type,  # Include intent for frontend
         "timestamp": datetime.utcnow().isoformat()
     }
     
@@ -55,9 +78,51 @@ async def send_processing_stage(websocket: WebSocket, stage_id: str, agent: str 
             logger.warning(f"WebSocket not connected, skipping stage: {stage['name']}")
             return
         await websocket.send_text(json.dumps(stage_msg))
-        logger.info(f"📊 Sent processing stage: {stage['name']}")
+        logger.info(f"📊 Sent {intent_type} stage: {stage['name']} ({stage['progress']}%)")
     except Exception as e:
         logger.error(f"Failed to send processing stage {stage_id}: {e}")
+
+
+async def send_intent_stage_list(websocket: WebSocket, intent_type: str):
+    """Send the complete stage list for an intent to the frontend"""
+    stages = INTENT_STAGE_MAPPINGS.get(intent_type, INTENT_STAGE_MAPPINGS["document_analysis"])
+    
+    stage_list_msg = {
+        "type": "stage_list",
+        "intent_type": intent_type,
+        "stages": stages,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    try:
+        await websocket.send_text(json.dumps(stage_list_msg))
+        logger.info(f"📋 Sent stage list for intent: {intent_type} ({len(stages)} stages)")
+    except Exception as e:
+        logger.error(f"Failed to send stage list for {intent_type}: {e}")
+
+
+async def simulate_progress_for_intent(websocket: WebSocket, intent_type: str):
+    """Simulate realistic progress updates for a specific intent"""
+    stages = INTENT_STAGE_MAPPINGS.get(intent_type, INTENT_STAGE_MAPPINGS["document_analysis"])
+    
+    # Different delays based on intent complexity
+    delays = {
+        "casual_chat": [0.3, 0.5, 0.2],  # Fast for simple chat
+        "document_analysis": [0.5, 0.3, 0.8, 1.2, 1.0, 0.8, 1.0, 0.5],  # Varied for complex analysis
+        "mermaid_diagram": [0.4, 0.6, 1.2, 0.8, 0.3]  # Creative process timing
+    }
+    
+    stage_delays = delays.get(intent_type, [0.8] * len(stages))
+    
+    for i, stage in enumerate(stages):
+        delay = stage_delays[i] if i < len(stage_delays) else 0.8
+        await send_processing_stage(
+            websocket, 
+            stage["id"], 
+            stage.get("agent", "system"), 
+            delay, 
+            intent_type
+        )
 
 
 class ChatMessage(BaseModel):
@@ -298,20 +363,29 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                             document_id, document_version, user_message
                         )
                 
-                # Stage 1: Intent Detection
-                await send_processing_stage(websocket, "intent_detection", "system", 0.5)
+                # Stage 1: Intent Detection (quick check)
+                await send_processing_stage(websocket, "intent_detection", "system", 0.3)
                 
                 # Use LangGraph workflow for proper intent detection and routing
                 try:
                     logger.info("🤖 Using LangGraph workflow for message processing")
                     
-                    # Execute the full LangGraph workflow
+                    # Create progress callback for real-time updates
+                    async def progress_callback(stage_id: str, agent: str = "system", intent_type: str = "document_analysis"):
+                        """Send real-time progress updates during workflow execution"""
+                        try:
+                            await send_processing_stage(websocket, stage_id, agent, 0.1, intent_type)
+                        except Exception as e:
+                            logger.error(f"Failed to send progress update for {stage_id}: {e}")
+                    
+                    # Execute the full LangGraph workflow with progress callback
                     result = await execute_chat_workflow(
                         user_input=user_message,
                         document_content=document_content,
                         document_id=document_id,
                         version_number=document_version,
-                        chat_history=[]  # You can add actual chat history if needed
+                        chat_history=[],  # You can add actual chat history if needed
+                        progress_callback=progress_callback
                     )
                     
                     # Extract results from workflow
@@ -327,8 +401,22 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                             "type": "text",
                             "content": "I'm here to help! You can ask me questions about your document or request an analysis."
                         }]
-                        intent_detected = "chat"
+                        intent_detected = "casual_chat"  # Changed from "chat" to match intent types
                         agents_used = ["system"]
+                    
+                    # Map intent names for consistency
+                    intent_mapping = {
+                        "chat": "casual_chat",
+                        "casual": "casual_chat",
+                        "analysis": "document_analysis",
+                        "document": "document_analysis",
+                        "diagram": "mermaid_diagram",
+                        "mermaid": "mermaid_diagram"
+                    }
+                    intent_detected = intent_mapping.get(intent_detected, intent_detected)
+                    
+                    # Send stage list for the detected intent
+                    await send_intent_stage_list(websocket, intent_detected)
                     
                     # Save messages to chat history (if needed)
                     if document_id:
