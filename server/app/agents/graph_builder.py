@@ -181,9 +181,7 @@ async def load_document_context_node(state: ChatWorkflowState) -> ChatWorkflowSt
         Updated state with document context
     """
     try:
-        # Send progress update
-        if state.get("progress_callback"):
-            await state["progress_callback"]("document_parsing", "system", state.get("intent", "document_analysis"))
+        # Document parsing progress removed - not needed in workflow
             
         logger.info("Loading document context")
         
@@ -273,6 +271,10 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
         Updated state with casual chat response
     """
     try:
+        # Send progress update for agent selection
+        if state.get("progress_callback"):
+            await state["progress_callback"]("agent_selection", "system", "casual_chat")
+            
         logger.info("Handling casual chat")
         
         user_input = state.get("user_input", "")
@@ -285,8 +287,7 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
                     "type": "text",
                     "content": "I'm here to help with patent document analysis. How can I assist you today?",
                     "timestamp": "2024-01-01T00:00:00Z"
-                }],
-                "intent": "casual_chat"
+                }]
             }
         
         # Generate casual chat response
@@ -309,14 +310,17 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
         
         chat_response = response.choices[0].message.content
         
+        # Send progress update for finalizing results
+        if state.get("progress_callback"):
+            await state["progress_callback"]("finalizing_results", "system", "casual_chat")
+        
         return {
             **state,
             "messages": [{
                 "type": "text",
                 "content": chat_response,
                 "timestamp": "2024-01-01T00:00:00Z"
-            }],
-            "intent": "casual_chat"
+            }]
         }
         
     except Exception as e:
@@ -328,7 +332,6 @@ async def handle_casual_chat_node(state: ChatWorkflowState) -> ChatWorkflowState
                 "content": "I'm here to help with patent document analysis. What would you like to know?",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent": "casual_chat",
             "error": str(e)
         }
 
@@ -507,7 +510,6 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
                     "content": "I've analyzed your document and everything looks good! No specific improvements were identified at this time.",
                     "timestamp": "2024-01-01T00:00:00Z"
                 }],
-                "intent": "document_analysis",
                 "agents_used": agents_used
             }
         
@@ -535,7 +537,6 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
         
         return {
             "messages": messages,
-            "intent": "document_analysis",
             "agents_used": agents_used
         }
         
@@ -547,7 +548,6 @@ async def format_final_response_node(state: ChatWorkflowState) -> ChatWorkflowSt
                 "content": "I encountered an issue while formatting the analysis results. Please try again.",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent": "document_analysis",
             "error": str(e)
         }
 

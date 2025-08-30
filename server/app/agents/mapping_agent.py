@@ -375,6 +375,10 @@ async def mapping_analysis_node(state: Dict[str, Any]) -> Dict[str, Any]:
         Updated state with chunk mapping results
     """
     try:
+        # Send progress update for suggestion mapping
+        if state.get("progress_callback"):
+            await state["progress_callback"]("suggestion_mapping", "mapping", "document_analysis")
+            
         # Extract required information from state
         openai_client = state.get("openai_client")
         original_chunks = state.get("original_chunks", [])

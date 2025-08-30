@@ -21,26 +21,24 @@ logger = logging.getLogger(__name__)
 # Intent-specific processing stage configurations
 INTENT_STAGE_MAPPINGS = {
     "casual_chat": [
-        {"id": "understanding", "name": "Understanding Query", "message": "Processing your question...", "progress": 30, "agent": "system"},
-        {"id": "generating_response", "name": "Generating Response", "message": "Preparing response...", "progress": 70, "agent": "assistant"},
-        {"id": "finalizing", "name": "Finalizing", "message": "Finalizing response...", "progress": 100, "agent": "system"}
+        {"id": "intent_detection", "name": "Understanding Request", "message": "Processing your message...", "progress": 25, "agent": "system"},
+        {"id": "agent_selection", "name": "Preparing Response", "message": "Setting up AI assistant...", "progress": 50, "agent": "system"},
+        {"id": "finalizing_results", "name": "Generating Response", "message": "Creating response...", "progress": 90, "agent": "system"}
     ],
     "document_analysis": [
         {"id": "intent_detection", "name": "Intent Detection", "message": "Analyzing your request...", "progress": 10, "agent": "system"},
         {"id": "agent_selection", "name": "Agent Selection", "message": "Selecting appropriate AI agents...", "progress": 20, "agent": "lead"},
-        {"id": "document_parsing", "name": "Document Parsing", "message": "Processing document content...", "progress": 30, "agent": "system"},
-        {"id": "legal_analysis", "name": "Legal Analysis", "message": "Legal agent investigating compliance...", "progress": 50, "agent": "legal"},
-        {"id": "technical_analysis", "name": "Technical Analysis", "message": "Technical agent reviewing structure...", "progress": 70, "agent": "technical"},
-        {"id": "novelty_analysis", "name": "Novelty Analysis", "message": "Novelty agent checking innovation...", "progress": 80, "agent": "novelty"},
-        {"id": "generating_suggestions", "name": "Generating Suggestions", "message": "Preparing improvement suggestions...", "progress": 90, "agent": "lead"},
+        {"id": "technical_analysis", "name": "Technical Analysis", "message": "Technical agent reviewing structure...", "progress": 40, "agent": "technical"},
+        {"id": "legal_analysis", "name": "Legal Analysis", "message": "Legal agent investigating compliance...", "progress": 40, "agent": "legal"},
+        {"id": "novelty_analysis", "name": "Novelty Analysis", "message": "Novelty agent checking innovation...", "progress": 40, "agent": "novelty"},
+        {"id": "lead_synthesis", "name": "Lead Synthesis", "message": "Lead agent synthesizing findings...", "progress": 60, "agent": "lead"},
+        {"id": "suggestion_mapping", "name": "Suggestion Mapping", "message": "Mapping suggestions to document...", "progress": 80, "agent": "mapping"},
         {"id": "finalizing_results", "name": "Finalizing Results", "message": "Finalizing analysis results...", "progress": 100, "agent": "system"}
     ],
     "mermaid_diagram": [
-        {"id": "analyzing_content", "name": "Analyzing Content", "message": "Understanding document structure...", "progress": 20, "agent": "system"},
-        {"id": "extracting_structure", "name": "Extracting Structure", "message": "Identifying key relationships...", "progress": 40, "agent": "technical"},
-        {"id": "generating_diagram", "name": "Generating Diagram", "message": "Creating visual representation...", "progress": 70, "agent": "ai_enhanced"},
-        {"id": "rendering", "name": "Rendering Visualization", "message": "Preparing diagram display...", "progress": 90, "agent": "system"},
-        {"id": "complete", "name": "Complete", "message": "Diagram ready!", "progress": 100, "agent": "system"}
+        {"id": "intent_detection", "name": "Request Analysis", "message": "Understanding diagram requirements...", "progress": 25, "agent": "system"},
+        {"id": "agent_selection", "name": "Diagram Setup", "message": "Preparing diagram generator...", "progress": 50, "agent": "system"},
+        {"id": "diagram_generation", "name": "Creating Diagram", "message": "Generating Mermaid diagram...", "progress": 90, "agent": "system"}
     ]
 }
 
@@ -370,10 +368,19 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                 try:
                     logger.info("🤖 Using LangGraph workflow for message processing")
                     
+                    # Track if we've sent stage list for this intent
+                    sent_stage_lists = set()
+                    
                     # Create progress callback for real-time updates
                     async def progress_callback(stage_id: str, agent: str = "system", intent_type: str = "document_analysis"):
                         """Send real-time progress updates during workflow execution"""
                         try:
+                            # Send stage list once per intent when we first know the intent
+                            if intent_type and intent_type not in sent_stage_lists:
+                                logger.info(f"🎯 Early stage list send for intent: {intent_type}")
+                                await send_intent_stage_list(websocket, intent_type)
+                                sent_stage_lists.add(intent_type)
+                            
                             await send_processing_stage(websocket, stage_id, agent, 0.1, intent_type)
                         except Exception as e:
                             logger.error(f"Failed to send progress update for {stage_id}: {e}")
@@ -415,8 +422,8 @@ async def unified_chat_websocket_endpoint(websocket: WebSocket):
                     }
                     intent_detected = intent_mapping.get(intent_detected, intent_detected)
                     
-                    # Send stage list for the detected intent
-                    await send_intent_stage_list(websocket, intent_detected)
+                    # Stage list already sent during workflow execution via progress_callback
+                    logger.info(f"📋 Stage list already sent for intent: {intent_detected}")
                     
                     # Save messages to chat history (if needed)
                     if document_id:

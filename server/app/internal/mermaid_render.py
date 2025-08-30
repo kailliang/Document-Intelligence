@@ -695,6 +695,10 @@ async def generate_mermaid_node(state: dict) -> dict:
         Updated state with mermaid diagram response
     """
     try:
+        # Send progress update for agent selection
+        if state.get("progress_callback"):
+            await state["progress_callback"]("agent_selection", "system", "mermaid_diagram")
+            
         logger.info("Generating Mermaid diagram")
         
         user_input = state.get("user_input", "")
@@ -714,8 +718,7 @@ async def generate_mermaid_node(state: dict) -> dict:
                     "type": "text",
                     "content": "I'm unable to generate diagrams at the moment. Please try again later.",
                     "timestamp": "2024-01-01T00:00:00Z"
-                }],
-                "intent_detected": "mermaid_diagram"
+                }]
             }
         
         # Generate Mermaid code using AI
@@ -805,6 +808,10 @@ Document Content:
                 mermaid_code = create_fallback_diagram(user_input)
                 logger.info("Using fallback diagram due to persistent syntax errors")
         
+        # Send progress update for diagram generation
+        if state.get("progress_callback"):
+            await state["progress_callback"]("diagram_generation", "system", "mermaid_diagram")
+        
         # Return response with mermaid diagram
         return {
             **state,
@@ -813,7 +820,6 @@ Document Content:
                 "content": f"Here's the diagram you requested:\n\n```mermaid\n{mermaid_code}\n```",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent_detected": "mermaid_diagram",
             "mermaid_code": mermaid_code
         }
         
@@ -826,6 +832,5 @@ Document Content:
                 "content": "I encountered an issue generating the diagram. Could you please rephrase your request?",
                 "timestamp": "2024-01-01T00:00:00Z"
             }],
-            "intent_detected": "mermaid_diagram",
             "error": str(e)
         }

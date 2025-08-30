@@ -639,6 +639,10 @@ async def lead_evaluation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         Updated state with final synthesized document
     """
     try:
+        # Send progress update for lead synthesis
+        if state.get("progress_callback"):
+            await state["progress_callback"]("lead_synthesis", "lead", "document_analysis")
+            
         # Get improved documents from all agents
         improved_documents = state.get("improved_documents", [])
         

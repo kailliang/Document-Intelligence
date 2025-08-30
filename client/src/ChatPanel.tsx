@@ -161,7 +161,7 @@ export default function ChatPanel({
   const [suggestionManager, setSuggestionManager] = useState<SuggestionManager | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false); // Track chat history loading
   const [hasInitialized, setHasInitialized] = useState(false); // Track if component has initialized
-  const [detectedIntent, setDetectedIntent] = useState<string>("document_analysis"); // Track detected intent
+  const [detectedIntent, setDetectedIntent] = useState<string | null>(null); // Track detected intent
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
 
@@ -170,22 +170,23 @@ export default function ChatPanel({
   const stageConfigurations: Record<string, ProcessingStage[]> = {
     document_analysis: [
       { id: "intent_detection", name: "Intent Detection", message: "Analyzing your request...", progress: 10, status: 'pending' as const, agent: "system" },
-      { id: "agent_selection", name: "Agent Selection", message: "Selecting appropriate AI agents...", progress: 20, status: 'pending' as const, agent: "system" },
-      { id: "document_parsing", name: "Document Parsing", message: "Processing document content...", progress: 30, status: 'pending' as const, agent: "technical" },
-      { id: "legal_analysis", name: "Legal Analysis", message: "Legal agent investigating compliance...", progress: 50, status: 'pending' as const, agent: "legal" },
-      { id: "technical_analysis", name: "Technical Analysis", message: "Technical agent reviewing structure...", progress: 70, status: 'pending' as const, agent: "technical" },
-      { id: "generating_suggestions", name: "Generating Suggestions", message: "Preparing improvement suggestions...", progress: 85, status: 'pending' as const, agent: "ai_enhanced" },
-      { id: "finalizing_results", name: "Finalizing Results", message: "Finalizing analysis results...", progress: 95, status: 'pending' as const, agent: "system" }
+      { id: "agent_selection", name: "Agent Selection", message: "Selecting appropriate AI agents...", progress: 20, status: 'pending' as const, agent: "lead" },
+      { id: "legal_analysis", name: "Legal Analysis", message: "Legal agent investigating compliance...", progress: 40, status: 'pending' as const, agent: "legal" },
+      { id: "technical_analysis", name: "Technical Analysis", message: "Technical agent reviewing structure...", progress: 40, status: 'pending' as const, agent: "technical" },
+      { id: "novelty_analysis", name: "Novelty Analysis", message: "Novelty agent checking innovation...", progress: 40, status: 'pending' as const, agent: "novelty" },
+      { id: "lead_synthesis", name: "Lead Synthesis", message: "Lead agent synthesizing findings...", progress: 60, status: 'pending' as const, agent: "lead" },
+      { id: "suggestion_mapping", name: "Suggestion Mapping", message: "Mapping suggestions to document...", progress: 80, status: 'pending' as const, agent: "mapping" },
+      { id: "finalizing_results", name: "Finalizing Results", message: "Finalizing analysis results...", progress: 100, status: 'pending' as const, agent: "system" }
     ],
     casual_chat: [
       { id: "intent_detection", name: "Understanding Request", message: "Processing your message...", progress: 25, status: 'pending' as const, agent: "system" },
       { id: "agent_selection", name: "Preparing Response", message: "Setting up AI assistant...", progress: 50, status: 'pending' as const, agent: "system" },
-      { id: "finalizing_results", name: "Generating Response", message: "Creating response...", progress: 90, status: 'pending' as const, agent: "ai_enhanced" }
+      { id: "finalizing_results", name: "Generating Response", message: "Creating response...", progress: 90, status: 'pending' as const, agent: "system" }
     ],
     mermaid_diagram: [
       { id: "intent_detection", name: "Request Analysis", message: "Understanding diagram requirements...", progress: 25, status: 'pending' as const, agent: "system" },
       { id: "agent_selection", name: "Diagram Setup", message: "Preparing diagram generator...", progress: 50, status: 'pending' as const, agent: "system" },
-      { id: "finalizing_results", name: "Creating Diagram", message: "Generating Mermaid diagram...", progress: 90, status: 'pending' as const, agent: "ai_enhanced" }
+      { id: "diagram_generation", name: "Creating Diagram", message: "Generating Mermaid diagram...", progress: 90, status: 'pending' as const, agent: "system" }
     ]
   };
   
@@ -370,6 +371,7 @@ export default function ChatPanel({
     if (!lastJsonMessage) return;
 
     const message = lastJsonMessage as any;
+    console.log('📨 WebSocket message received:', message.type, message);
     
     switch (message.type) {
       case 'connection_success':
@@ -385,15 +387,25 @@ export default function ChatPanel({
       case 'processing_stage':
         // Handle individual processing stage updates
         const stageData = message;
+        console.log('🔄 Processing stage update:', stageData.stage, stageData.intent_type);
         
         // Update detected intent if provided by backend
         if (stageData.intent_type) {
+          console.log('🎯 Intent updated to:', stageData.intent_type);
           setDetectedIntent(stageData.intent_type);
         }
         
-        // Use current stages (should be initialized in sendMessage or from stage_list)
-        const currentStageConfig = stageConfigurations[stageData.intent_type || detectedIntent] || defaultStages;
-        const updatedStages = allProcessingStages.length > 0 ? allProcessingStages : currentStageConfig;
+        // Use current stages or initialize from configuration based on intent
+        const currentStageConfig = stageConfigurations[stageData.intent_type || detectedIntent || "document_analysis"] || defaultStages;
+        
+        // Initialize stages from config if we don't have the right stages for this intent
+        let updatedStages = allProcessingStages;
+        if (allProcessingStages.length === 0 || 
+           (stageData.intent_type && !allProcessingStages.some(s => s.id === stageData.stage))) {
+          // Initialize full stage list from configuration
+          console.log('📋 Initializing stages from config for intent:', stageData.intent_type || detectedIntent);
+          updatedStages = currentStageConfig.map(stage => ({...stage, status: 'pending' as const}));
+        }
         
         // Update stages with current stage status
         const newStages = updatedStages.map(stage => {
@@ -406,21 +418,35 @@ export default function ChatPanel({
               status: 'active' as const,
               agent: stageData.agent || stage.agent
             };
-          } else if (currentStageConfig.findIndex(s => s.id === stage.id) < currentStageConfig.findIndex(s => s.id === stageData.stage)) {
-            // Mark earlier stages as completed
-            return { ...stage, status: 'completed' as const };
+          } else {
+            // For document_analysis, agents run in parallel, so don't auto-complete earlier stages
+            const isDocumentAnalysis = (stageData.intent_type || detectedIntent) === "document_analysis";
+            const parallelAgentStages = ["technical_analysis", "legal_analysis", "novelty_analysis"];
+            const isParallelStage = parallelAgentStages.includes(stage.id) && parallelAgentStages.includes(stageData.stage);
+            
+            if (!isDocumentAnalysis || !isParallelStage) {
+              // For non-parallel stages, mark earlier stages as completed
+              const currentStageIndex = currentStageConfig.findIndex(s => s.id === stage.id);
+              const activeStageIndex = currentStageConfig.findIndex(s => s.id === stageData.stage);
+              if (currentStageIndex >= 0 && activeStageIndex >= 0 && currentStageIndex < activeStageIndex) {
+                return { ...stage, status: 'completed' as const };
+              }
+            }
+            return stage;
           }
-          return stage;
         });
         
+        console.log('📈 Updated stages:', newStages);
         setAllProcessingStages(newStages);
-        setCurrentProcessingStage(newStages.find(s => s.id === stageData.stage) || null);
+        const currentStage = newStages.find(s => s.id === stageData.stage) || null;
+        console.log('🎯 Current stage set to:', currentStage?.name);
+        setCurrentProcessingStage(currentStage);
         break;
         
       case 'stage_list':
         // Handle dynamic stage list from backend based on detected intent
         if (message.intent_type && message.stages) {
-          console.log(`📋 Received stage list for intent: ${message.intent_type}`);
+          console.log(`📋 Received stage list for intent: ${message.intent_type}`, message.stages);
           setDetectedIntent(message.intent_type);
           
           // Convert backend stages to frontend format
@@ -433,6 +459,7 @@ export default function ChatPanel({
             agent: stage.agent || 'system'
           }));
           
+          console.log('📊 Setting frontend stages:', frontendStages);
           setAllProcessingStages(frontendStages);
         }
         break;
@@ -586,36 +613,20 @@ export default function ChatPanel({
     setMessages(prev => [...prev, userMessage]);
     const messageToSend = inputMessage;
     
-    // Determine intent based on keywords (same as backend logic)
-    const userLower = messageToSend.toLowerCase();
-    let predictedIntent = "casual_chat";
+    // Reset intent and stages - will be set by backend
+    setDetectedIntent(null);
     
-    // Check for diagram keywords
-    if (userLower.includes("diagram") || userLower.includes("flowchart") || 
-        userLower.includes("chart") || userLower.includes("visual") || 
-        userLower.includes("draw") || userLower.includes("mermaid")) {
-      predictedIntent = "mermaid_diagram";
-    }
-    // Check for document analysis keywords
-    else if (userLower.includes("analyze") || userLower.includes("review") || 
-              userLower.includes("check") || userLower.includes("improve") || 
-              userLower.includes("suggest") || userLower.includes("issue") ||
-              userLower.includes("problem") || userLower.includes("fix")) {
-      // Check if we have document content to analyze
-      const hasDocumentContent = getCurrentDocumentContent && getCurrentDocumentContent().trim().length > 0;
-      if (hasDocumentContent) {
-        predictedIntent = "document_analysis";
-      } else {
-        // If no document content, treat as casual chat
-        predictedIntent = "casual_chat";
-      }
-    }
-    
-    // Set predicted intent and initialize stages
-    setDetectedIntent(predictedIntent);
-    const stagesToUse = stageConfigurations[predictedIntent] || defaultStages;
-    setAllProcessingStages(stagesToUse);
-    setCurrentProcessingStage(null);
+    // Set initial intention detection stage
+    const initialStage = {
+      id: "intent_detection",
+      name: "Detecting Intent",
+      message: "Analyzing your message to determine the best approach...",
+      progress: 5,
+      status: 'active' as const,
+      agent: "system"
+    };
+    setAllProcessingStages([initialStage]);
+    setCurrentProcessingStage(initialStage);
     
     setInputMessage("");
     setIsLoading(true);
