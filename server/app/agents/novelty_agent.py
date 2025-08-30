@@ -12,7 +12,7 @@ import logging
 from typing import Dict, Any, List
 from openai import AsyncOpenAI
 
-from .base_agent import BaseAgent, AnalysisContext, Suggestion, create_suggestion_function_schema
+from .base_agent import BaseAgent, AnalysisContext, Suggestion
 
 logger = logging.getLogger(__name__)
 

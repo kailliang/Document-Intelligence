@@ -307,7 +307,11 @@ Please respond with your evaluation analysis focusing on which suggestions are m
                 {"role": "user", "content": synthesis_prompt}
             ]
             
-            response = await self._call_openai_with_functions(messages, temperature=0.2)
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.2,
+                messages=messages
+            )
             
             # Process AI feedback and apply to suggestions
             final_suggestions = self._apply_ai_evaluation(
