@@ -1,4 +1,4 @@
-# Patent Reviewer Backend
+# Document Intelligence Backend
 
 ## Layout
 
@@ -16,29 +16,65 @@ app
 └
 ```
 
-## First-time setup
+## Environment Setup
+
+### Prerequisites
+- Python 3.13 or higher
+- Virtual environment support
+
+### First-time setup
 
 ```sh
-# Create a virtual environment
-python -m venv env
+# Create an isolated virtual environment
+python3 -m venv .venv
 
 # Activate your virtual environment
-source env/bin/activate
+source .venv/bin/activate
 
-# Install dependencies
+# Upgrade pip to latest version
+pip install --upgrade pip
+
+# Install production dependencies
 pip install -r requirements.txt
+
+# Install test dependencies
+pip install -r requirements-test.txt
 ```
 
-Make sure you create a .env file (see .env.example) with the OpenAI API key we've provided.
+### Environment Configuration
+Make sure you create a `.env` file (see `.env.example`) with the required API keys:
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+### Verify Installation
+```sh
+# Activate environment
+source .venv/bin/activate
+
+# Test installation
+python -c "import fastapi; print('✅ Backend environment ready!')"
+```
 
 ## Running locally
 
-To run the backend locally, with auto-reload on code changes,
-
+### Using Virtual Environment
 ```sh
-uvicorn app.__main__:app --reload
+# Activate virtual environment
+source .venv/bin/activate
+
+# Start with auto-reload
+uvicorn app.__main__:app --reload --host 0.0.0.0 --port 8080
 ```
 
-## DB
+### Using Development Scripts
+From project root directory:
+```sh
+# Automatic startup (uses virtual environment)
+./start-dev.sh
 
-On start-up, the app will initialise an in-memory SQLite DB, and fill it with some seed data. If you decide that you want to reset your changes, all you need to do is re-run the backend.
+# Manual backend only
+cd server && source .venv/bin/activate && uvicorn app.__main__:app --reload
+```
+

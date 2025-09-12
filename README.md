@@ -145,16 +145,45 @@ graph TB
 
 ## 🚦 Development Workflow
 
+### Environment Setup
+**First-time setup requires creating isolated virtual environments:**
+```bash
+# Backend Python environment
+cd server
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-test.txt
+
+# Frontend Node.js environment  
+cd ../client
+nvm use  # Uses Node.js v22.19.0 from .nvmrc
+npm install
+```
+
 ### Local Development
 ```bash
-# Quick start with development scripts
-./start-dev.sh    # Starts both frontend and backend
+# Quick start with development scripts (uses virtual environments)
+./start-dev.sh    # Starts both frontend and backend with proper environments
 ./logs-dev.sh     # Monitor service status
 ./stop-dev.sh     # Clean shutdown
 
 # Manual setup for debugging
-cd client && npm run dev     # Frontend on :3000
-cd server && uvicorn app.__main__:app --reload  # Backend on :8080
+cd server
+source .venv/bin/activate  # Activate Python virtual environment
+uvicorn app.__main__:app --reload --host 0.0.0.0 --port 8080
+
+cd client
+nvm use           # Switch to project Node.js version
+npm run dev       # Frontend on :3000
+```
+
+### Environment Verification
+```bash
+# Verify backend environment
+cd server && source .venv/bin/activate && python -c "import fastapi; print('✅ Backend ready')"
+
+# Verify frontend environment
+cd client && nvm use && npm run lint --silent && echo "✅ Frontend ready"
 ```
 
 ### CI/CD Pipeline
