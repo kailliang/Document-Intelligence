@@ -27,6 +27,7 @@ dist
 dist-ssr
 build/
 *.egg-info/
+docker-compose.yml
 
 # Local files
 *.local
