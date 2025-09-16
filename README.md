@@ -1,19 +1,25 @@
 # Document Intelligence System
 
-A production-ready, full-stack patent analysis platform with AI-powered document review capabilities. Built with React, TypeScript, FastAPI, and OpenAI GPT-4.1 with advanced WebSocket integration.
+An intelligent document analysis platform that combines modern full-stack development with advanced AI engineering. This project explores the intersection of real-time web applications and multi-agent AI systems, tackling complex challenges in document processing and collaborative editing.
 
 ## 🎯 Project Overview
 
-This enterprise-grade application demonstrates advanced full-stack development skills through a sophisticated patent document review system. It showcases modern software engineering practices, AI integration, unified chat interfaces, and complex state management in a real-world application context.
+Built as a comprehensive solution for document review and analysis, this application integrates multiple sophisticated technologies to create a seamless user experience. The system demonstrates expertise in distributed architectures, real-time communication patterns, and AI workflow orchestration through practical implementation of complex features like version control, streaming AI analysis, and collaborative document editing.
 
-### Key Achievements
-- **Unified AI Interface**: Integrated chat and document analysis with persistent history
-- **Advanced WebSocket Handling**: Robust connection management with graceful error recovery
-- **Multi-Agent Architecture**: Ready for specialized AI agents (Legal, Technical, Novelty)
-- **Dynamic Document Management**: Flexible document seeding and version control
-- **Real-time Collaboration**: WebSocket-based streaming for instant AI feedback
-- **Custom Editor Extensions**: Built ProseMirror extensions for precise text manipulation
-- **Production-Ready**: Complete with error handling, state persistence, and performance optimizations
+## 🛠️ Technical Architecture
+
+### Full-Stack Implementation
+- **Frontend**: React with TypeScript, TipTap/ProseMirror rich text editing, TanStack Query
+- **Backend**: FastAPI async Python, SQLAlchemy ORM, WebSocket server
+- **AI Integration**: OpenAI GPT-4.1, LangGraph multi-agent workflows
+- **Database**: Custom SQLite schema with document versioning and chat persistence
+
+### Key Engineering Solutions
+- **Multi-Agent AI System**: Specialized agents orchestrated through LangGraph workflows
+- **Real-time Communication**: WebSocket implementation with streaming AI responses
+- **Document Version Control**: Git-like versioning with atomic operations and diff tracking
+- **Custom Editor Extensions**: ProseMirror plugins for suggestion cards and diagram integration
+- **Intelligent Processing**: Fuzzy text matching and context-aware document analysis
 
 ## 🚀 Technical Stack
 
@@ -26,15 +32,14 @@ This enterprise-grade application demonstrates advanced full-stack development s
 - **Vite** for lightning-fast development and optimized production builds
 
 ### Backend
-- **FastAPI** for high-performance async Python API
-- **SQLAlchemy ORM** with SQLite for robust data persistence
-- **OpenAI GPT-4.1** integration with Function Calling for advanced AI capabilities
-- **LangGraph Multi-Agent System**: Specialized agents for legal, technical, and novelty analysis
-- **Unified WebSocket Chat**: Single endpoint for chat and document analysis
-- **Chat History Persistence**: Per-document-version conversation storage
-- **Dynamic Document Seeding**: Automatic discovery and ordering of patent documents
-- **Playwright** for server-side PDF generation with Mermaid support
-- **Enhanced Error Handling**: Graceful WebSocket disconnection management
+- **FastAPI** async Python framework with WebSocket support
+- **SQLAlchemy ORM** with custom schema design for document versioning
+- **OpenAI GPT-4.1** integration with streaming responses
+- **LangGraph Multi-Agent System**: Coordinated AI workflows with specialized agents
+- **Real-time Communication**: WebSocket server with connection management
+- **Data Persistence**: Chat history and document version storage
+- **PDF Generation**: Playwright-based server-side rendering
+- **Error Handling**: Graceful degradation and connection recovery
 
 ### DevOps & Tools
 - **Docker** containerization for consistent deployment
@@ -42,46 +47,29 @@ This enterprise-grade application demonstrates advanced full-stack development s
 - **ESLint & TypeScript** for code quality enforcement
 - **Automated testing** infrastructure
 
-## 💡 Core Features
+## ✨ Feature Demonstrations
 
-### 1. Document Version Control System
-- **Git-like versioning**: Create, switch, and manage document versions
-- **Diff tracking**: Visual comparison between versions
-- **Atomic saves**: Transaction-based updates with rollback capability
-- **History persistence**: Complete audit trail of all changes
+### Document Version Control System
+A Git-inspired versioning system that maintains complete document history with visual diff tracking. Users can create new versions, switch between versions, and compare changes with atomic transaction support.
 
-### 2. AI-Powered Analysis Engine
-```typescript
-// Real-time AI suggestion system with streaming
-const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-const { sendJsonMessage, lastJsonMessage, readyState } = useWebSocket(WS_URL);
+![Version Control Demo](client/src/assets/version-control-demo.gif)
 
-// Intelligent text matching with fuzzy search fallback
-const findTextInDocument = (doc: Document, searchText: string) => {
-  // Multiple search strategies for robust text location
-  return findExactMatch(doc, searchText) || 
-         findFuzzyMatch(doc, searchText) || 
-         findContextualMatch(doc, searchText);
-};
-```
+### Multi-Agent AI Analysis
+Real-time document analysis using specialized AI agents (Technical, Legal, Novelty) coordinated through LangGraph workflows. The system streams suggestions with contextual understanding and confidence scoring.
 
-### 3. Interactive Suggestion System
-- **Inline suggestion cards** with accept/reject workflow
-- **Confidence scoring** for AI recommendations
-- **Batch processing** for multiple suggestions
-- **Undo/redo** support with command pattern
+![AI Analysis Demo](client/src/assets/ai-analysis-demo.gif)  
 
-### 4. Advanced Diagram Integration
-- **Mermaid diagram support** with custom TipTap extension
-- **AI-generated flowcharts** from natural language
-- **SVG optimization** for PDF export
-- **Responsive scaling** for various screen sizes
+### Suggestion Card Insertion
+Interactive suggestion cards that appear inline within the document editor. AI-generated recommendations are presented as actionable cards with accept/reject options, allowing users to seamlessly incorporate or dismiss suggestions while maintaining document flow.
 
-### 5. Enterprise PDF Export
-- **Playwright-based rendering** for pixel-perfect output
-- **Asynchronous processing** with progress tracking
-- **Security features**: Path validation, sanitization
-- **Auto-cleanup** with configurable retention
+![Suggestion Card Insertion](client/src/assets/suggestion-card-demo.gif)
+
+### AI-Powered Diagram Generation
+Natural language to Mermaid diagram conversion with custom TipTap extensions. Users can describe flowcharts or processes, and the AI generates interactive diagrams that integrate seamlessly into documents.
+
+![Diagram Generation Demo](client/src/assets/diagram-generation-demo.gif)
+
+
 
 ## 🏗️ System Architecture
 
@@ -119,20 +107,21 @@ graph TB
     AI --> OpenAI[OpenAI API]
 ```
 
-## Performance Optimizations
-- **Debounced AI triggers**: Intelligent 1-second delay to reduce API calls
-- **Virtual scrolling**: Efficient rendering of large documents
-- **Code splitting**: Lazy loading of heavy components
-- **Memoization**: Strategic use of React.memo and useMemo
-- **Connection pooling**: Reusable WebSocket connections
+## 🔧 Technical Implementation
 
-## 📊 Performance Metrics
+### Advanced Features
+- **Real-time Streaming**: WebSocket implementation with automatic reconnection and error recovery
+- **Multi-Agent Coordination**: LangGraph workflows managing parallel AI agent execution with state reducers
+- **Document Version Control**: Git-like versioning system with atomic operations and rollback capability
+- **Intelligent Text Processing**: Fuzzy matching algorithms for robust text location and context awareness
+- **Custom Editor Integration**: ProseMirror extensions for suggestion cards and diagram embedding
+- **Performance Optimization**: Debounced AI triggers, virtual scrolling, and strategic memoization
 
-- **Initial Load**: < 2s (optimized bundle size ~350KB gzipped)
-- **AI Response Time**: < 500ms for suggestions
-- **PDF Export**: < 3s for 20-page documents
-- **WebSocket Latency**: < 100ms round-trip
-- **Database Queries**: Optimized with indexes, < 50ms average
+### Production Considerations
+- **Error Handling**: Graceful degradation with comprehensive error boundaries
+- **Security**: Input sanitization, CORS configuration, and secure API key management
+- **Scalability**: Modular architecture supporting horizontal scaling and database migration
+- **Testing**: Comprehensive test suite covering WebSocket communication and AI integration
 
 ## 🔒 Security Implementation
 
@@ -211,11 +200,3 @@ cd client && nvm use && npm run lint --silent && echo "✅ Frontend ready"
 3. **Advanced AI Pipeline**: Multi-agent system for specialized analysis
 4. **Enterprise Features**: SSO, audit logs, compliance reports
 5. **Performance Monitoring**: OpenTelemetry integration
-
-## 📝 Documentation
-
-- **API Documentation**: Auto-generated with FastAPI at `http://localhost:8080/docs` when running
-- **System Architecture**: Comprehensive architecture documentation in `SYSTEM_ARCHITECTURE.md`
-- **Development Guide**: Setup instructions in `start-stop-dev.md`
-
----

@@ -2,7 +2,7 @@
 
 ## Layout
 
-Application code is in the `app/` directory. Everything under `app/internal/` should not be modified, but feel free to take a look at the internals - think of it as a third party library.
+
 
 ```
 app
